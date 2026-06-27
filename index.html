@@ -160,6 +160,8 @@ button{font-family:inherit;cursor:pointer}
 .schrow .amt{font-size:13.5px;font-weight:500}
 .schrow.overdue .amt{color:var(--dgtx)}
 .schmore{font-size:12.5px;color:var(--mut);text-align:center;padding:8px 0}
+.sliplink{font-size:11px;color:var(--ac);text-decoration:none;border:.5px solid var(--ac);padding:2px 9px;border-radius:11px;white-space:nowrap}
+.fld input[type=file]{padding:8px 11px;font-size:13px;background:var(--bg)}
 
 /* modal */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;display:flex;align-items:flex-end;justify-content:center}
@@ -201,6 +203,10 @@ button{font-family:inherit;cursor:pointer}
         <option>ค่าปรับ</option>
         <option>อื่นๆ</option>
       </select>
+    </div>
+    <div class="fld"><label>แนบสลิปโอนเงิน (ยืนยันการจ่าย)</label>
+      <input type="file" id="m_slip" accept="image/*" onchange="onSlipPick(this)">
+      <div id="m_slip_status" style="font-size:12px;color:var(--mut);margin-top:5px"></div>
     </div>
     <div class="fld"><label>หมายเหตุ</label><input id="m_note" placeholder="ไม่บังคับ"></div>
     <div class="btnrow">
@@ -268,15 +274,21 @@ async function reload(){
 }
 
 /* ---------- filtering ---------- */
+function sameOwner(c){ return owner==='all' || String(c.owner||'').trim()===owner; }
 function visibleContracts(){
   return CONTRACTS.filter(c=>{
-    if(owner!=='all' && c.owner!==owner) return false;
+    if(!sameOwner(c)) return false;
     if(filter==='all') return true;
     return c.status===filter;
   });
 }
 function ownedContracts(){
-  return CONTRACTS.filter(c=> owner==='all' || c.owner===owner );
+  return CONTRACTS.filter(sameOwner);
+}
+function ownerKeys(){
+  const seen=[]; const map={};
+  CONTRACTS.forEach(c=>{ const o=String(c.owner||'').trim(); if(o&&!map[o]){ map[o]=1; seen.push(o); } });
+  return seen;
 }
 
 /* ============================ RENDER ============================ */
@@ -291,8 +303,10 @@ function render(){
 }
 
 function ownerToggleHTML(){
-  const mk=(v,l)=>`<button class="${owner===v?'on':''}" onclick="setOwner('${v}')">${l}</button>`;
-  return `<div class="owner">${mk('all','รวม')}${mk('Toppy','Toppy')}${mk('Daddy','Daddy')}</div>`;
+  const mk=(v,l)=>`<button class="${owner===v?'on':''}" onclick="setOwner('${String(v).replace(/'/g,"\\'")}')">${esc(l)}</button>`;
+  let html = mk('all','รวม');
+  ownerKeys().forEach(o=> html += mk(o,o));
+  return `<div class="owner">${html}</div>`;
 }
 function setOwner(v){ owner=v; render(); }
 function go(v,id){ view=v; if(id!==undefined) selectedId=id; window.scrollTo(0,0); render(); }
@@ -420,7 +434,8 @@ function renderDetail(){
   const payRows = (c.payments||[]).slice().reverse().map(p=>`
     <div class="payrow">
       <div><div class="pd">${thDate(p.date)}</div><div class="pt">${esc(p.type||'-')}${p.term_months?(' · +'+p.term_months+' ด.'):''}${p.note&&p.type!=='ไถ่ถอน'?(' · '+esc(p.note)):''}</div></div>
-      <div style="display:flex;align-items:center;gap:10px">
+      <div style="display:flex;align-items:center;gap:8px">
+        ${p.slip_url?`<a href="${esc(p.slip_url)}" target="_blank" rel="noopener" class="sliplink">สลิป</a>`:'<span style="font-size:11px;color:var(--mut2)">ไม่มีสลิป</span>'}
         <div class="pa">${baht(p.amount)}</div>
         <button class="pdel" onclick="delPayment('${p.pid}','${c.id}')" aria-label="ลบ">✕</button>
       </div>
@@ -507,7 +522,8 @@ function renderDetail(){
       <div class="lbl">เงื่อนไขการเงิน</div>
       <div class="box">
         ${kv('เงินต้น (ขาย)',baht(c.sale_amount))}
-        ${kv('ดอกเบี้ย',c.interest_pct+'%')}
+        ${kv('ดอกเบี้ย',c.interest_pct+'% (ทั้งสัญญา)')}
+        ${kv('ดอกเบี้ย/เดือน',baht(c.monthly_interest||c.sched_per||(c.term_months?Math.round(c.sale_amount*c.interest_pct/100/c.term_months):0)))}
         ${kv('สินไถ่ (เป้าหมาย)',baht(c.redemption_amount))}
         ${kv('รับมาแล้ว',baht(c.paid_total||0))}
         ${kv('กำไรรับจริง','<span style="color:var(--oktx);font-weight:500">'+baht(c.realized_profit||0)+'</span>')}
@@ -533,14 +549,36 @@ function kv(k,v){ return `<div class="kv"><span class="k">${k}</span><span class
 function maskId(id){ id=String(id); if(id.length<5) return id; return id.slice(0,4)+' ••••• •• '+id.slice(-3); }
 
 /* ---------- ACTIONS ---------- */
-let payCtx=null;
+let payCtx=null, slipData=null;
+function fileToResizedDataURL(file, maxDim, quality){
+  maxDim=maxDim||1280; quality=quality||0.7;
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=e=>{ const img=new Image();
+      img.onload=()=>{ let w=img.width,h=img.height;
+        if(w>h && w>maxDim){ h=Math.round(h*maxDim/w); w=maxDim; }
+        else if(h>maxDim){ w=Math.round(w*maxDim/h); h=maxDim; }
+        const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+        cv.getContext('2d').drawImage(img,0,0,w,h);
+        resolve(cv.toDataURL('image/jpeg',quality)); };
+      img.onerror=reject; img.src=e.target.result; };
+    reader.onerror=reject; reader.readAsDataURL(file);
+  });
+}
+async function onSlipPick(input){
+  const f=input.files&&input.files[0];
+  if(!f){ slipData=null; el('m_slip_status').textContent=''; return; }
+  el('m_slip_status').textContent='กำลังเตรียมรูป…'; el('m_slip_status').style.color='var(--mut)';
+  try{ slipData=await fileToResizedDataURL(f); el('m_slip_status').textContent='✓ แนบสลิปแล้ว'; el('m_slip_status').style.color='var(--oktx)'; }
+  catch(e){ slipData=null; el('m_slip_status').textContent='อ่านรูปไม่สำเร็จ ลองใหม่'; el('m_slip_status').style.color='var(--dgtx)'; }
+}
 function openPay(id, mode){
-  payCtx={id,mode};
+  payCtx={id,mode}; slipData=null;
   const c = CONTRACTS.find(x=>String(x.id)===String(id));
   const titles={renew:'ต่อสัญญา',pay:'บันทึกรับเงิน',redeem:'รับสินไถ่ (ปิดสัญญา)'};
   el('m_title').textContent=titles[mode]||'บันทึกรับเงิน';
   el('m_date').value=new Date().toISOString().slice(0,10);
-  el('m_note').value='';
+  el('m_note').value=''; el('m_slip').value=''; el('m_slip_status').textContent='';
   el('m_term_wrap').style.display = mode==='renew'?'block':'none';
   el('m_type_wrap').style.display = mode==='pay'?'block':'none';
   if(mode==='renew'){ el('m_amount_label').textContent='ค่าต่อสัญญา / ดอกเบี้ย (บาท)'; el('m_amount').value=''; el('m_term').value='12'; }
@@ -549,19 +587,21 @@ function openPay(id, mode){
   el('modal').classList.remove('hidden');
   setTimeout(()=>el('m_amount').focus(),60);
 }
-function closePay(){ el('modal').classList.add('hidden'); payCtx=null; }
+function closePay(){ el('modal').classList.add('hidden'); payCtx=null; slipData=null; }
 async function savePay(){
   if(!payCtx) return;
   const amount=String(el('m_amount').value).replace(/,/g,'');
   const date=el('m_date').value, note=el('m_note').value.trim();
   if(!amount||isNaN(+amount)||+amount<=0){ alert('กรอกจำนวนเงินให้ถูกต้อง'); return; }
   if(!date){ alert('เลือกวันที่'); return; }
+  if(!slipData){ if(!confirm('ยังไม่ได้แนบสลิปโอนเงิน — ต้องการบันทึกโดยไม่มีหลักฐานหรือไม่?')) return; }
   const id=payCtx.id, mode=payCtx.mode;
+  const slip = slipData? {slip_base64:slipData, slip_name:'slip_'+id+'_'+date+'.jpg'} : {};
   try{
     showToast('กำลังบันทึก…');
-    if(mode==='renew') await apiPost({action:'renew',contract_id:id,amount,date,term_months:parseInt(el('m_term').value)||12,note});
-    else if(mode==='redeem') await apiPost({action:'redeem',id,redeem_received:amount,redeem_date:date});
-    else await apiPost({action:'addPayment',contract_id:id,amount,date,type:el('m_type').value,note});
+    if(mode==='renew') await apiPost(Object.assign({action:'renew',contract_id:id,amount,date,term_months:parseInt(el('m_term').value)||12,note},slip));
+    else if(mode==='redeem') await apiPost(Object.assign({action:'redeem',id,redeem_received:amount,redeem_date:date},slip));
+    else await apiPost(Object.assign({action:'addPayment',contract_id:id,amount,date,type:el('m_type').value,note},slip));
     closePay(); await reload(); go('detail',id); showToast('บันทึกแล้ว');
   }catch(e){ alert('ผิดพลาด: '+e.message); }
 }
@@ -588,7 +628,7 @@ function editContract(id){ editId=id; go('form'); }
 function renderForm(){
   const c = editId? CONTRACTS.find(x=>String(x.id)===String(editId)) : null;
   const v = (k,d)=> c&&c[k]!=null&&c[k]!==''? c[k] : (d!==undefined?d:'');
-  const ownerSel = c?c.owner:(owner!=='all'?owner:'Toppy');
+  const ownerSel = c?String(c.owner||'').trim():(owner!=='all'?owner:'Toppy');
   el('app').innerHTML = `
     <div class="bk">
       <button class="x" onclick="cancelForm()">‹</button>
@@ -619,8 +659,9 @@ function renderForm(){
 
       <div class="f2">
         <div class="fld"><label>เงินต้น (ขาย)</label><input id="f_sale" value="${esc(v('sale_amount'))}" inputmode="numeric"></div>
-        <div class="fld"><label>ดอกเบี้ย %</label><input id="f_pct" value="${esc(v('interest_pct',15))}" inputmode="decimal"></div>
+        <div class="fld"><label>ดอกเบี้ย % (รวมทั้งสัญญา)</label><input id="f_pct" value="${esc(v('interest_pct',15))}" inputmode="decimal"></div>
       </div>
+      <div class="fld"><label>ดอกเบี้ย/เดือน (บาท) — เว้นว่างได้ จะคิดให้อัตโนมัติ</label><input id="f_monthly" value="${esc(v('monthly_interest'))}" inputmode="numeric" placeholder="คิดอัตโนมัติจากดอกเบี้ย%"></div>
       <div class="f2">
         <div class="fld"><label>ราคาประเมิน</label><input id="f_appraised" value="${esc(v('appraised'))}" inputmode="numeric"></div>
         <div class="fld"><label>ถือครอง (ปี)</label><input id="f_hold" value="${esc(v('hold_years'))}" inputmode="numeric"></div>
@@ -647,7 +688,7 @@ function renderForm(){
         <button class="btn dark" onclick="saveForm()">บันทึก</button>
       </div>
     </div>`;
-  ['f_sale','f_pct','f_contract_date','f_term'].forEach(id=>{
+  ['f_sale','f_pct','f_contract_date','f_term','f_monthly'].forEach(id=>{
     const e=el(id); e.addEventListener('input',updatePreview); e.addEventListener('change',updatePreview);
   });
   updatePreview();
@@ -664,9 +705,11 @@ function updatePreview(){
   const cd=el('f_contract_date').value, term=parseInt(el('f_term').value)||12;
   const deadline=cd?addMonthsISO(cd,term):'';
   const grace=deadline?addMonthsISO(deadline,6):'';
+  const monthly = numFromInput('f_monthly') || Math.round((sale*pct/100)/term);
   el('preview').innerHTML =
     kv('สินไถ่ (คำนวณ)',baht(redemption))+
-    kv('กำไร',baht(redemption-sale))+
+    kv('ดอกเบี้ย/เดือน (งวดละ)','<span style="font-weight:500">'+baht(monthly)+'</span>')+
+    kv('กำไรเต็มสัญญา',baht(redemption-sale))+
     (deadline?kv('ครบกำหนดไถ่',thDate(deadline)):'')+
     (grace?kv('สิ้นสุดสิทธิไถ่ (+6 ด.)',thDate(grace)):'');
 }
@@ -698,6 +741,7 @@ async function saveForm(){
     term_months: parseInt(el('f_term').value)||12,
     sale_amount: numFromInput('f_sale'),
     interest_pct: numFromInput('f_pct')||15,
+    monthly_interest: el('f_monthly').value? numFromInput('f_monthly'):'',
     appraised: numFromInput('f_appraised')||'',
     hold_years: el('f_hold').value? numFromInput('f_hold'):'',
     fee_personal: numFromInput('f_fee_personal')||'',
