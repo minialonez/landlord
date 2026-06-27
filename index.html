@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>ทะเบียนขายฝากที่ดิน</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f5f6f8; --card:#ffffff; --b:#e6e8eb; --b2:#d3d6db;
+  --tx:#1a1d21; --mut:#6b7280; --mut2:#9aa1ab;
+  --ac:#2563eb; --acbg:#eff6ff; --actx:#1d4ed8;
+  --ok:#16a34a; --okbg:#f0fdf4; --oktx:#15803d;
+  --wn:#b45309; --wnbg:#fffbeb; --wntx:#92400e;
+  --dg:#dc2626; --dgbg:#fef2f2; --dgtx:#b91c1c;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans Thai',sans-serif;background:var(--bg);color:var(--tx);font-size:15px;line-height:1.55;-webkit-tap-highlight-color:transparent}
+.wrap{max-width:480px;margin:0 auto;min-height:100vh;background:var(--bg);padding-bottom:74px;position:relative}
+.app{background:var(--card)}
+button{font-family:inherit;cursor:pointer}
+.hidden{display:none!important}
+
+/* header */
+.hd{padding:16px 18px 12px;background:var(--card);border-bottom:.5px solid var(--b);position:sticky;top:0;z-index:20}
+.hd .sub{font-size:12px;color:var(--mut2)}
+.hd .ttl{font-size:20px;font-weight:600}
+.hd-row{display:flex;justify-content:space-between;align-items:center}
+
+/* owner toggle */
+.owner{display:flex;gap:6px;margin-top:10px}
+.owner button{font-size:13px;padding:5px 14px;border-radius:20px;border:.5px solid var(--b2);background:transparent;color:var(--mut)}
+.owner button.on{background:var(--tx);color:#fff;border-color:var(--tx)}
+
+/* sections */
+.sec{padding:14px 18px}
+.lbl{font-size:12px;font-weight:600;color:var(--mut);margin:6px 0 8px;letter-spacing:.02em}
+
+/* big stat */
+.big{background:var(--acbg);border-radius:14px;padding:16px;margin-bottom:12px}
+.big .k{font-size:12px;color:var(--actx)}
+.big .v{font-size:26px;font-weight:700;color:var(--actx);letter-spacing:-.01em}
+.big .s{font-size:12px;color:var(--actx)}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.stat{background:var(--bg);border-radius:10px;padding:12px}
+.stat .k{font-size:11px;color:var(--mut)}
+.stat .v{font-size:19px;font-weight:600}
+
+/* alerts */
+.al{border-radius:10px;padding:12px;margin-bottom:8px;display:flex;gap:10px;align-items:flex-start}
+.al .ic{font-size:18px;line-height:1;margin-top:2px}
+.al.dg{background:var(--dgbg)} .al.dg *{color:var(--dgtx)}
+.al.wn{background:var(--wnbg)} .al.wn *{color:var(--wntx)}
+.al .t{font-size:13px;font-weight:600}
+.al .d{font-size:12.5px}
+.al.flat{background:transparent;border:.5px solid var(--b)}
+.al.flat *{color:var(--mut)} .al.flat b{color:var(--tx);font-weight:600}
+
+/* filter chips */
+.chips{display:flex;gap:6px;overflow-x:auto;padding:10px 18px 4px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{font-size:12.5px;padding:5px 13px;border-radius:20px;border:.5px solid var(--b2);background:transparent;color:var(--mut);white-space:nowrap}
+.chip.on{background:var(--tx);color:#fff;border-color:var(--tx)}
+
+/* contract card */
+.card{border:.5px solid var(--b);border-radius:13px;padding:13px 14px;margin:0 18px 10px;background:var(--card)}
+.card.tap{cursor:pointer;transition:border-color .12s}
+.card.tap:active{border-color:var(--b2)}
+.card.dgline{border-color:#f3c7c7}
+.card .top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.card .nm{font-size:15.5px;font-weight:600}
+.card .ln{font-size:12.5px;color:var(--mut);margin-top:3px}
+.card .ln.dg{color:var(--dgtx)}
+.badge{font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;white-space:nowrap;flex:none}
+.b-ac{background:var(--acbg);color:var(--actx)}
+.b-ok{background:var(--okbg);color:var(--oktx)}
+.b-wn{background:var(--wnbg);color:var(--wntx)}
+.b-dg{background:var(--dgbg);color:var(--dgtx)}
+.b-gy{background:#f1f2f4;color:var(--mut)}
+.dim{opacity:.78}
+
+/* detail */
+.bk{display:flex;align-items:center;gap:10px;padding:14px 18px 12px;background:var(--card);border-bottom:.5px solid var(--b);position:sticky;top:0;z-index:20}
+.bk .x{font-size:22px;color:var(--tx);background:none;border:none;padding:0;width:26px}
+.box{border:.5px solid var(--b);border-radius:11px;padding:12px 13px;margin-bottom:13px}
+.kv{display:flex;justify-content:space-between;gap:14px;font-size:13.5px;padding:3px 0}
+.kv .k{color:var(--mut)} .kv .v{text-align:right;font-weight:500}
+.kv.tot{border-top:.5px solid var(--b);margin-top:5px;padding-top:7px}
+.banner{border-radius:11px;padding:13px;margin-bottom:14px;display:flex;gap:11px}
+.banner .ic{font-size:22px;margin-top:1px}
+.banner.dg{background:var(--dgbg)} .banner.dg *{color:var(--dgtx)}
+.banner.ok{background:var(--okbg)} .banner.ok *{color:var(--oktx)}
+.banner .t{font-size:13.5px;font-weight:600}
+.banner .d{font-size:12.5px;line-height:1.5}
+
+/* buttons */
+.btnrow{display:flex;gap:8px;margin-top:6px}
+.btn{flex:1;padding:11px;font-size:13.5px;border-radius:9px;border:.5px solid var(--b2);background:var(--card);color:var(--tx);font-weight:500}
+.btn.dark{background:var(--tx);color:#fff;border-color:var(--tx)}
+.btn.dg{background:var(--dg);color:#fff;border-color:var(--dg)}
+.btn.ok{background:var(--ok);color:#fff;border-color:var(--ok)}
+.btn.sm{flex:none;padding:8px 14px;font-size:13px}
+.btn:active{transform:scale(.98)}
+
+/* form */
+.fld{margin-bottom:12px}
+.fld label{display:block;font-size:12.5px;color:var(--mut);margin-bottom:4px;font-weight:500}
+.fld input,.fld select,.fld textarea{width:100%;font-family:inherit;font-size:14.5px;padding:9px 11px;border:.5px solid var(--b2);border-radius:9px;background:var(--card);color:var(--tx)}
+.fld input:focus,.fld select:focus,.fld textarea:focus{outline:none;border-color:var(--ac);box-shadow:0 0 0 3px var(--acbg)}
+.fld textarea{resize:vertical;min-height:42px}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.preview{background:var(--acbg);border-radius:10px;padding:11px 13px;margin:4px 0 14px}
+.preview .kv .k,.preview .kv .v{color:var(--actx)}
+.hintbtn{font-size:11.5px;color:var(--ac);background:none;border:none;padding:0;text-decoration:underline}
+
+/* bottom nav */
+.nav{position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;display:flex;background:var(--card);border-top:.5px solid var(--b);z-index:30}
+.nav button{flex:1;border:none;background:none;padding:9px 0 11px;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--mut2)}
+.nav button.on{color:var(--ac)}
+.nav .ic{font-size:21px;line-height:1}
+.nav .t{font-size:11px}
+.fab{position:fixed;bottom:86px;right:max(18px,calc(50% - 240px + 18px));width:52px;height:52px;border-radius:50%;background:var(--ac);color:#fff;border:none;font-size:28px;line-height:1;box-shadow:0 4px 14px rgba(37,99,235,.4);z-index:31;display:flex;align-items:center;justify-content:center}
+
+/* misc */
+.empty{text-align:center;color:var(--mut2);padding:50px 20px;font-size:14px}
+.setup{margin:40px 18px;padding:20px;border:1px dashed var(--b2);border-radius:14px;background:var(--card)}
+.setup h3{font-size:16px;margin-bottom:8px}
+.setup p{font-size:13.5px;color:var(--mut);margin-bottom:6px}
+.setup code{background:var(--bg);padding:2px 6px;border-radius:5px;font-size:12.5px;word-break:break-all}
+.spin{text-align:center;padding:60px 0;color:var(--mut)}
+.toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%);background:var(--tx);color:#fff;font-size:13px;padding:9px 18px;border-radius:22px;z-index:50;opacity:0;transition:opacity .2s;max-width:90%}
+.toast.show{opacity:1}
+.mut{color:var(--mut)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="app" class="app"></div>
+</div>
+<div id="nav" class="nav hidden">
+  <button data-view="dashboard" class="on"><span class="ic">▦</span><span class="t">ภาพรวม</span></button>
+  <button data-view="list"><span class="ic">▤</span><span class="t">สัญญา</span></button>
+  <button data-view="form"><span class="ic">＋</span><span class="t">เพิ่ม</span></button>
+</div>
+<button id="fab" class="fab hidden">＋</button>
+<div id="toast" class="toast"></div>
+
+<script>
+/* =====================================================================
+ *  ตั้งค่า: วาง URL ของ Web App (ลงท้าย /exec) ที่ได้จากการ Deploy GAS
+ * ===================================================================== */
+const API_URL = 'https://script.google.com/macros/s/AKfycbwotRAFf0FMUM46OkmcZvu2s7y9OzAXS1bQcPBAObBTqHgloOFWkRgAJ6vNIcm7J5khPA/exec';
+
+/* ---------- state ---------- */
+let CONTRACTS = [];
+let owner = 'all';            // all | Toppy | Daddy
+let filter = 'all';           // all | overdue | near | redeemed | forfeited
+let view = 'dashboard';
+let selectedId = null;
+let editId = null;
+
+const TH_MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+
+/* ---------- helpers ---------- */
+function baht(n){ if(n===''||n==null||isNaN(n)) return '—'; return '฿'+Number(n).toLocaleString('en-US'); }
+function thDate(iso){
+  if(!iso) return '—';
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); if(!m) return iso;
+  return parseInt(m[3])+' '+TH_MONTHS[parseInt(m[2])-1]+' '+(parseInt(m[1])+543);
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function el(id){ return document.getElementById(id); }
+
+const STATUS = {
+  active:   {label:'กำลังดำเนิน', cls:'b-ac'},
+  near:     {label:'ใกล้ครบ',    cls:'b-wn'},
+  overdue:  {label:'เกินกำหนด · ห้ามต่อ', cls:'b-dg'},
+  redeemed: {label:'ไถ่ถอนแล้ว',  cls:'b-ok'},
+  forfeited:{label:'หลุดขายฝาก',  cls:'b-gy'}
+};
+
+function showToast(msg){
+  const t=el('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._tm); t._tm=setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+/* ---------- API ---------- */
+async function apiGet(){
+  const res = await fetch(API_URL+'?action=list&t='+Date.now());
+  const data = await res.json();
+  if(!data.ok) throw new Error(data.error||'load failed');
+  return data.contracts;
+}
+async function apiPost(payload){
+  const res = await fetch(API_URL,{method:'POST',body:JSON.stringify(payload)});
+  const data = await res.json();
+  if(!data.ok) throw new Error(data.error||'save failed');
+  return data;
+}
+async function reload(){
+  CONTRACTS = await apiGet();
+  render();
+}
+
+/* ---------- filtering ---------- */
+function visibleContracts(){
+  return CONTRACTS.filter(c=>{
+    if(owner!=='all' && c.owner!==owner) return false;
+    if(filter==='all') return true;
+    return c.status===filter;
+  });
+}
+function ownedContracts(){
+  return CONTRACTS.filter(c=> owner==='all' || c.owner===owner );
+}
+
+/* ============================ RENDER ============================ */
+function render(){
+  el('nav').classList.toggle('hidden', view==='detail'||view==='form');
+  el('fab').classList.toggle('hidden', view!=='dashboard'&&view!=='list');
+  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on', b.dataset.view===view));
+  if(view==='dashboard') return renderDashboard();
+  if(view==='list')      return renderList();
+  if(view==='detail')    return renderDetail();
+  if(view==='form')      return renderForm();
+}
+
+function ownerToggleHTML(){
+  const mk=(v,l)=>`<button class="${owner===v?'on':''}" onclick="setOwner('${v}')">${l}</button>`;
+  return `<div class="owner">${mk('all','รวม')}${mk('Toppy','Toppy')}${mk('Daddy','Daddy')}</div>`;
+}
+function setOwner(v){ owner=v; render(); }
+function go(v,id){ view=v; if(id!==undefined) selectedId=id; window.scrollTo(0,0); render(); }
+
+/* ---------- DASHBOARD ---------- */
+function renderDashboard(){
+  const list = ownedContracts();
+  const open = list.filter(c=>c.status!=='redeemed'&&c.status!=='forfeited');
+  const principal = open.reduce((s,c)=>s+(+c.sale_amount||0),0);
+  const redemption= open.reduce((s,c)=>s+(+c.redemption_amount||0),0);
+  const profit = redemption-principal;
+
+  const overdue = list.filter(c=>c.status==='overdue');
+  const near = list.filter(c=>c.status==='near').sort((a,b)=>a.daysToDeadline-b.daysToDeadline);
+  const forfeited = list.filter(c=>c.status==='forfeited');
+  const forfVal = forfeited.reduce((s,c)=>s+(+c.income_amount||+c.sale_amount||0),0);
+
+  let alerts='';
+  if(overdue.length){
+    const rows = overdue.slice(0,3).map(c=>`<div class="d">${esc(c.seller_name)} · ${c.daysOverdue!=null?('เลยกำหนด '+c.daysOverdue+' วัน'):'เกินกำหนด'}${c.deed_count?(' · '+c.deed_count+' แปลง'):''}</div>`).join('');
+    alerts += `<div class="al dg"><span class="ic">⛔</span><div><div class="t">เกินกำหนดไถ่ — อย่าต่อสัญญา (${overdue.length})</div>${rows}<div class="d" style="margin-top:3px">เตรียมดำเนินการรับกรรมสิทธิ์ที่ดิน</div></div></div>`;
+  }
+  if(near.length){
+    const rows = near.slice(0,3).map(c=>`<div class="d">${esc(c.seller_name)} · ครบ ${thDate(c.deadline)} (เหลือ ${c.daysToDeadline} วัน)</div>`).join('');
+    alerts += `<div class="al wn"><span class="ic">⏰</span><div><div class="t">ใกล้ครบกำหนดไถ่ (${near.length})</div>${rows}</div></div>`;
+  }
+  if(forfeited.length){
+    alerts += `<div class="al flat"><span class="ic mut">📍</span><div class="d">ที่ดินถือครองจากการหลุดขายฝาก · <b>${forfeited.length} สัญญา</b> มูลค่า ${baht(forfVal)}</div></div>`;
+  }
+  if(!alerts) alerts = `<div class="empty" style="padding:20px">ไม่มีรายการต้องดำเนินการ</div>`;
+
+  el('app').innerHTML = `
+    <div class="hd">
+      <div class="sub">ทะเบียนขายฝากที่ดิน</div>
+      <div class="ttl">ภาพรวมพอร์ต</div>
+      ${ownerToggleHTML()}
+    </div>
+    <div class="sec">
+      <div class="big">
+        <div class="k">เงินต้นที่ปล่อยอยู่</div>
+        <div class="v">${baht(principal)}</div>
+        <div class="s">${open.length} สัญญากำลังดำเนิน</div>
+      </div>
+      <div class="grid2">
+        <div class="stat"><div class="k">สินไถ่ที่จะได้รับ</div><div class="v">${baht(redemption)}</div></div>
+        <div class="stat"><div class="k">กำไรคาดหวัง</div><div class="v" style="color:var(--oktx)">${baht(profit)}</div></div>
+      </div>
+      <div class="lbl">แจ้งเตือน</div>
+      ${alerts}
+    </div>`;
+}
+
+/* ---------- LIST ---------- */
+function renderList(){
+  const chips = [['all','ทั้งหมด'],['overdue','เกินกำหนด'],['near','ใกล้ครบ'],['redeemed','ไถ่แล้ว'],['forfeited','หลุด']];
+  const list = visibleContracts().sort(orderForList);
+  el('app').innerHTML = `
+    <div class="hd">
+      <div class="hd-row"><div class="ttl">รายการสัญญา</div></div>
+      ${ownerToggleHTML()}
+    </div>
+    <div class="chips">
+      ${chips.map(([v,l])=>`<button class="chip ${filter===v?'on':''}" onclick="setFilter('${v}')">${l}</button>`).join('')}
+    </div>
+    <div class="sec" style="padding-top:8px">
+      ${list.length? list.map(cardHTML).join('') : '<div class="empty">ไม่มีสัญญาในกลุ่มนี้</div>'}
+    </div>`;
+}
+function setFilter(v){ filter=v; render(); }
+function orderForList(a,b){
+  const rank={overdue:0,near:1,active:2,redeemed:3,forfeited:4};
+  return (rank[a.status]-rank[b.status]);
+}
+function cardHTML(c){
+  const st = STATUS[c.status]||STATUS.active;
+  const closed = c.status==='redeemed'||c.status==='forfeited';
+  let ln2='';
+  if(c.status==='overdue') ln2=`<div class="ln dg">เลยกำหนดไถ่${c.daysOverdue!=null?(' '+c.daysOverdue+' วัน'):''} — เตรียมรับกรรมสิทธิ์</div>`;
+  else if(c.status==='redeemed') ln2=`<div class="ln">รับสินไถ่ ${thDate(c.redeem_date)} · ${baht(c.redeem_received||c.redemption_amount)}</div>`;
+  else if(c.status==='forfeited') ln2=`<div class="ln">ได้กรรมสิทธิ์เด็ดขาด · ${baht(c.income_amount||c.sale_amount)}</div>`;
+  else ln2=`<div class="ln">สินไถ่ ${baht(c.redemption_amount)} · ครบ ${thDate(c.deadline)}</div>`;
+  const deeds = c.deed_count>1?(' · '+c.deed_count+' แปลง'):'';
+  return `<div class="card tap ${c.status==='overdue'?'dgline':''} ${closed?'dim':''}" onclick="go('detail','${c.id}')">
+    <div class="top">
+      <div class="nm">${esc(c.seller_name||'(ไม่ระบุชื่อ)')}</div>
+      <span class="badge ${st.cls}">${st.label}</span>
+    </div>
+    <div class="ln">${esc(c.location)} · เงินต้น ${baht(c.sale_amount)}${deeds} · ${esc(c.owner)}</div>
+    ${ln2}
+  </div>`;
+}
+
+/* ---------- DETAIL ---------- */
+function renderDetail(){
+  const c = CONTRACTS.find(x=>String(x.id)===String(selectedId));
+  if(!c){ go('list'); return; }
+  const st = STATUS[c.status]||STATUS.active;
+
+  let banner='';
+  if(c.status==='overdue'){
+    banner = `<div class="banner dg"><span class="ic">⛔</span><div>
+      <div class="t">เลยกำหนดไถ่ถอนแล้ว${c.daysOverdue!=null?(' '+c.daysOverdue+' วัน'):''}</div>
+      <div class="d">${c.pastGrace?'เลยสิทธิไถ่ (+6 เดือน) แล้ว — ':''}ห้ามต่อสัญญาขายฝาก ดำเนินการรับกรรมสิทธิ์ที่ดิน${c.deed_count>1?(' '+c.deed_count+' แปลง'):''}</div>
+    </div></div>`;
+  } else if(c.status==='redeemed'){
+    banner = `<div class="banner ok"><span class="ic">✓</span><div>
+      <div class="t">ไถ่ถอนแล้ว</div>
+      <div class="d">รับสินไถ่ ${thDate(c.redeem_date)} · ${baht(c.redeem_received||c.redemption_amount)}</div></div></div>`;
+  } else if(c.status==='forfeited'){
+    banner = `<div class="banner ok"><span class="ic">▣</span><div>
+      <div class="t">ได้กรรมสิทธิ์เด็ดขาด</div>
+      <div class="d">ที่ดินตกเป็นกรรมสิทธิ์ · เงินได้ ${baht(c.income_amount||c.sale_amount)}</div></div></div>`;
+  }
+
+  const fees = (c.fee_personal||c.fee_juristic||c.tax_sbt||c.tax_local||c.wht) ? `
+    <div class="lbl">ค่าธรรมเนียม & ภาษี (กรมที่ดิน)</div>
+    <div class="box">
+      ${c.fee_personal?kv('ค่าธรรมเนียม (บุคคล)',baht(c.fee_personal)):''}
+      ${c.fee_juristic?kv('ค่าธรรมเนียม (นิติบุคคล)',baht(c.fee_juristic)):''}
+      ${c.tax_sbt?kv('ภาษีธุรกิจเฉพาะ',baht(c.tax_sbt)):''}
+      ${c.tax_local?kv('ภาษีท้องถิ่น',baht(c.tax_local)):''}
+      ${c.wht?kv('หัก ณ ที่จ่าย',baht(c.wht)):''}
+    </div>` : '';
+
+  let actions='';
+  if(c.status!=='redeemed'&&c.status!=='forfeited'){
+    if(c.status==='overdue'){
+      actions = `<div class="btnrow">
+        <button class="btn" onclick="doRedeem('${c.id}')">รับสินไถ่</button>
+        <button class="btn dg" onclick="doForfeit('${c.id}')">รับกรรมสิทธิ์ที่ดิน</button></div>`;
+    } else {
+      actions = `<div class="btnrow">
+        <button class="btn ok" onclick="doRedeem('${c.id}')">รับสินไถ่</button>
+        <button class="btn" onclick="doForfeit('${c.id}')">บันทึกหลุดขายฝาก</button></div>`;
+    }
+  }
+
+  el('app').innerHTML = `
+    <div class="bk">
+      <button class="x" onclick="go('list')">‹</button>
+      <div><div style="font-size:16.5px;font-weight:600">${esc(c.seller_name||'(ไม่ระบุชื่อ)')}</div>
+      <div style="font-size:12px;color:var(--mut)">${st.label} · ${esc(c.owner)}</div></div>
+    </div>
+    <div class="sec">
+      ${banner}
+      <div class="lbl">ผู้ขายฝาก</div>
+      <div class="box" style="font-size:13.5px;line-height:1.6">
+        ${c.seller_id?('บัตร ปชช. '+esc(maskId(c.seller_id))+'<br>'):''}${esc(c.location||'—')}
+      </div>
+
+      <div class="lbl">ที่ดิน (หลักประกัน)</div>
+      <div class="box">
+        ${kv('ประเภทนิติกรรม',esc(c.nitikam))}
+        ${kv('ชนิดเอกสาร',esc(c.deed_type||'—'))}
+        ${kv('โฉนด'+(c.deed_count>1?(' ('+c.deed_count+' แปลง)'):''), esc(c.deed_no||'—'))}
+        ${c.appraised?kv('ราคาประเมิน',baht(c.appraised)):''}
+      </div>
+
+      <div class="lbl">เงื่อนไขการเงิน</div>
+      <div class="box">
+        ${kv('เงินต้น (ขาย)',baht(c.sale_amount))}
+        ${kv('ดอกเบี้ย',c.interest_pct+'%')}
+        ${kv('สินไถ่ (อัตโนมัติ)',baht(c.redemption_amount))}
+        ${kv('กำไร',baht(c.profit))}
+        ${kv('วันทำสัญญา',thDate(c.contract_date))}
+        ${kv('ครบกำหนดไถ่',thDate(c.deadline))}
+        <div class="kv tot"><span class="k">สิ้นสุดสิทธิไถ่ (+6 ด.)</span><span class="v" style="color:${c.status==='overdue'?'var(--dgtx)':'inherit'}">${thDate(c.grace_deadline)}</span></div>
+      </div>
+
+      ${fees}
+      ${c.note?('<div class="lbl">หมายเหตุ</div><div class="box" style="font-size:13.5px;color:var(--mut)">'+esc(c.note)+'</div>'):''}
+
+      ${actions}
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn" onclick="editContract('${c.id}')">แก้ไข</button>
+        <button class="btn" onclick="doDelete('${c.id}')" style="color:var(--dgtx)">ลบ</button>
+      </div>
+    </div>`;
+}
+function kv(k,v){ return `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`; }
+function maskId(id){ id=String(id); if(id.length<5) return id; return id.slice(0,4)+' ••••• •• '+id.slice(-3); }
+
+/* ---------- ACTIONS ---------- */
+async function doRedeem(id){
+  const c = CONTRACTS.find(x=>String(x.id)===String(id));
+  const amtStr = prompt('ยอดสินไถ่ที่รับจริง (บาท)', c?c.redemption_amount:'');
+  if(amtStr===null) return;
+  const dateStr = prompt('วันที่รับเงิน (ปี-เดือน-วัน เช่น 2026-06-27)', new Date().toISOString().slice(0,10));
+  if(dateStr===null) return;
+  try{ showToast('กำลังบันทึก…'); await apiPost({action:'redeem',id,redeem_received:amtStr.replace(/,/g,''),redeem_date:dateStr}); await reload(); go('detail',id); showToast('บันทึกรับสินไถ่แล้ว'); }
+  catch(e){ alert('ผิดพลาด: '+e.message); }
+}
+async function doForfeit(id){
+  if(!confirm('ยืนยัน: ที่ดินหลุดขายฝาก ได้กรรมสิทธิ์เด็ดขาด?\n(จะบันทึกเงินได้ = เงินต้น)')) return;
+  const dateStr = prompt('วันที่ได้กรรมสิทธิ์ (ปี-เดือน-วัน)', new Date().toISOString().slice(0,10));
+  if(dateStr===null) return;
+  try{ showToast('กำลังบันทึก…'); await apiPost({action:'forfeit',id,redeem_date:dateStr}); await reload(); go('detail',id); showToast('บันทึกได้กรรมสิทธิ์แล้ว'); }
+  catch(e){ alert('ผิดพลาด: '+e.message); }
+}
+async function doDelete(id){
+  if(!confirm('ลบสัญญานี้ถาวร?')) return;
+  try{ showToast('กำลังลบ…'); await apiPost({action:'delete',id}); await reload(); go('list'); showToast('ลบแล้ว'); }
+  catch(e){ alert('ผิดพลาด: '+e.message); }
+}
+
+/* ---------- FORM ---------- */
+function editContract(id){ editId=id; go('form'); }
+function renderForm(){
+  const c = editId? CONTRACTS.find(x=>String(x.id)===String(editId)) : null;
+  const v = (k,d)=> c&&c[k]!=null&&c[k]!==''? c[k] : (d!==undefined?d:'');
+  const ownerSel = c?c.owner:(owner!=='all'?owner:'Toppy');
+  el('app').innerHTML = `
+    <div class="bk">
+      <button class="x" onclick="cancelForm()">‹</button>
+      <div style="font-size:16.5px;font-weight:600">${c?'แก้ไขสัญญา':'เพิ่มสัญญาขายฝาก'}</div>
+    </div>
+    <div class="sec">
+      <div class="f2">
+        <div class="fld"><label>พอร์ต</label>
+          <select id="f_owner">${['Toppy','Daddy'].map(o=>`<option ${ownerSel===o?'selected':''}>${o}</option>`).join('')}</select></div>
+        <div class="fld"><label>ประเภท</label>
+          <select id="f_nitikam">${['ขายฝาก','ขายซื้อคืน'].map(o=>`<option ${v('nitikam','ขายฝาก')===o?'selected':''}>${o}</option>`).join('')}</select></div>
+      </div>
+      <div class="fld"><label>ชื่อ-นามสกุล ผู้ขายฝาก</label><input id="f_seller_name" value="${esc(v('seller_name'))}"></div>
+      <div class="fld"><label>เลขบัตรประชาชน</label><input id="f_seller_id" value="${esc(v('seller_id'))}" inputmode="numeric"></div>
+
+      <div class="f2">
+        <div class="fld"><label>ชนิดเอกสารสิทธิ์</label>
+          <select id="f_deed_type">${['น.ส.4 จ.','น.ส.4 ง.','น.ส.3 ก.','โฉนด','อื่นๆ'].map(o=>`<option ${v('deed_type')===o?'selected':''}>${o}</option>`).join('')}</select></div>
+        <div class="fld"><label>ที่ตั้ง (อำเภอ จังหวัด)</label><input id="f_location" value="${esc(v('location'))}"></div>
+      </div>
+      <div class="fld"><label>เลขที่โฉนด (หลายแปลงคั่นด้วย ,)</label><textarea id="f_deed_no">${esc(v('deed_no'))}</textarea></div>
+
+      <div class="f2">
+        <div class="fld"><label>วันทำสัญญา</label><input type="date" id="f_contract_date" value="${esc(v('contract_date'))}"></div>
+        <div class="fld"><label>ระยะเวลา</label>
+          <select id="f_term">${[[3,'3 เดือน'],[6,'6 เดือน'],[12,'1 ปี'],[24,'2 ปี'],[36,'3 ปี']].map(([m,l])=>`<option value="${m}" ${(+v('term_months',12))===m?'selected':''}>${l}</option>`).join('')}</select></div>
+      </div>
+
+      <div class="f2">
+        <div class="fld"><label>เงินต้น (ขาย)</label><input id="f_sale" value="${esc(v('sale_amount'))}" inputmode="numeric"></div>
+        <div class="fld"><label>ดอกเบี้ย %</label><input id="f_pct" value="${esc(v('interest_pct',15))}" inputmode="decimal"></div>
+      </div>
+      <div class="f2">
+        <div class="fld"><label>ราคาประเมิน</label><input id="f_appraised" value="${esc(v('appraised'))}" inputmode="numeric"></div>
+        <div class="fld"><label>ถือครอง (ปี)</label><input id="f_hold" value="${esc(v('hold_years'))}" inputmode="numeric"></div>
+      </div>
+
+      <div class="preview" id="preview"></div>
+
+      <div class="lbl" style="display:flex;justify-content:space-between;align-items:center">
+        <span>ค่าธรรมเนียม & ภาษี</span>
+        <button class="hintbtn" onclick="autoFees()">คำนวณอัตโนมัติ ↻</button>
+      </div>
+      <div class="f2">
+        <div class="fld"><label>ค่าธรรมเนียม (บุคคล)</label><input id="f_fee_personal" value="${esc(v('fee_personal'))}" inputmode="numeric"></div>
+        <div class="fld"><label>ค่าธรรมเนียม (นิติบุคคล)</label><input id="f_fee_juristic" value="${esc(v('fee_juristic'))}" inputmode="numeric"></div>
+      </div>
+      <div class="f2">
+        <div class="fld"><label>ภาษีธุรกิจเฉพาะ</label><input id="f_tax_sbt" value="${esc(v('tax_sbt'))}" inputmode="numeric"></div>
+        <div class="fld"><label>ภาษีท้องถิ่น</label><input id="f_tax_local" value="${esc(v('tax_local'))}" inputmode="numeric"></div>
+      </div>
+      <div class="fld"><label>หมายเหตุ</label><textarea id="f_note">${esc(v('note'))}</textarea></div>
+
+      <div class="btnrow" style="margin-top:4px">
+        <button class="btn" onclick="cancelForm()">ยกเลิก</button>
+        <button class="btn dark" onclick="saveForm()">บันทึก</button>
+      </div>
+    </div>`;
+  ['f_sale','f_pct','f_contract_date','f_term'].forEach(id=>{
+    const e=el(id); e.addEventListener('input',updatePreview); e.addEventListener('change',updatePreview);
+  });
+  updatePreview();
+}
+function numFromInput(id){ const e=el(id); if(!e) return 0; const n=Number(String(e.value).replace(/,/g,'')); return isNaN(n)?0:n; }
+function addMonthsISO(iso,m){
+  const x=String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); if(!x) return '';
+  const d=new Date(+x[1],+x[2]-1,+x[3]); d.setMonth(d.getMonth()+m);
+  return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
+}
+function updatePreview(){
+  const sale=numFromInput('f_sale'), pct=numFromInput('f_pct')||15;
+  const redemption=Math.round(sale*(1+pct/100));
+  const cd=el('f_contract_date').value, term=parseInt(el('f_term').value)||12;
+  const deadline=cd?addMonthsISO(cd,term):'';
+  const grace=deadline?addMonthsISO(deadline,6):'';
+  el('preview').innerHTML =
+    kv('สินไถ่ (คำนวณ)',baht(redemption))+
+    kv('กำไร',baht(redemption-sale))+
+    (deadline?kv('ครบกำหนดไถ่',thDate(deadline)):'')+
+    (grace?kv('สิ้นสุดสิทธิไถ่ (+6 ด.)',thDate(grace)):'');
+}
+function autoFees(){
+  const sale=numFromInput('f_sale'), appraised=numFromInput('f_appraised')||sale, hold=numFromInput('f_hold');
+  const base=Math.max(sale,appraised);
+  el('f_fee_personal').value = Math.round(base*0.02);     // ค่าธรรมเนียมจดทะเบียน 2%
+  if(hold>0 && hold<5){
+    const sbt = Math.round(base*0.03);                    // ภาษีธุรกิจเฉพาะ 3% (ถือครอง <5 ปี)
+    el('f_tax_sbt').value = sbt;
+    el('f_tax_local').value = Math.round(sbt*0.10);       // ภาษีท้องถิ่น = 10% ของ SBT (รวมเป็น 3.3%)
+  } else {
+    el('f_tax_sbt').value=''; el('f_tax_local').value='';
+  }
+  showToast('คำนวณค่าธรรมเนียมให้แล้ว — แก้ไขได้');
+}
+function cancelForm(){ editId=null; view = selectedId? 'detail':'list'; render(); }
+async function saveForm(){
+  const c = {
+    id: editId||'',
+    owner: el('f_owner').value,
+    nitikam: el('f_nitikam').value,
+    seller_name: el('f_seller_name').value.trim(),
+    seller_id: el('f_seller_id').value.trim(),
+    deed_type: el('f_deed_type').value,
+    deed_no: el('f_deed_no').value.trim(),
+    location: el('f_location').value.trim(),
+    contract_date: el('f_contract_date').value,
+    term_months: parseInt(el('f_term').value)||12,
+    sale_amount: numFromInput('f_sale'),
+    interest_pct: numFromInput('f_pct')||15,
+    appraised: numFromInput('f_appraised')||'',
+    hold_years: el('f_hold').value? numFromInput('f_hold'):'',
+    fee_personal: numFromInput('f_fee_personal')||'',
+    fee_juristic: numFromInput('f_fee_juristic')||'',
+    tax_sbt: numFromInput('f_tax_sbt')||'',
+    tax_local: numFromInput('f_tax_local')||'',
+    note: el('f_note').value.trim()
+  };
+  if(!c.seller_name){ alert('กรุณากรอกชื่อผู้ขายฝาก'); return; }
+  if(!c.sale_amount){ alert('กรุณากรอกเงินต้น'); return; }
+  try{
+    showToast('กำลังบันทึก…');
+    const r = await apiPost({action:'save',contract:c});
+    editId=null; await reload();
+    go('detail', r.contract.id);
+    showToast('บันทึกแล้ว');
+  }catch(e){ alert('ผิดพลาด: '+e.message); }
+}
+
+/* ---------- nav ---------- */
+document.querySelectorAll('#nav button').forEach(b=>{
+  b.addEventListener('click',()=>{
+    if(b.dataset.view==='form'){ editId=null; selectedId=null; go('form'); }
+    else go(b.dataset.view);
+  });
+});
+el('fab').addEventListener('click',()=>{ editId=null; selectedId=null; go('form'); });
+
+/* ---------- boot ---------- */
+async function boot(){
+  if(API_URL==='PASTE_YOUR_WEB_APP_URL_HERE'){
+    el('app').innerHTML = `<div class="setup">
+      <h3>⚙️ ยังไม่ได้ตั้งค่า</h3>
+      <p>เปิดไฟล์ <code>index.html</code> แล้วแก้บรรทัด:</p>
+      <p><code>const API_URL = '...'</code></p>
+      <p>ให้เป็น URL ของ Web App (ลงท้าย <code>/exec</code>) ที่ได้จากการ Deploy Apps Script</p>
+      <p style="margin-top:10px">ดูขั้นตอนใน <code>SETUP_GUIDE.md</code></p>
+    </div>`;
+    return;
+  }
+  el('app').innerHTML = `<div class="spin">กำลังโหลดข้อมูล…</div>`;
+  el('nav').classList.remove('hidden');
+  try{ CONTRACTS = await apiGet(); render(); }
+  catch(e){
+    el('app').innerHTML = `<div class="setup"><h3>เชื่อมต่อไม่สำเร็จ</h3>
+      <p>${esc(e.message)}</p>
+      <p>ตรวจสอบว่า Deploy เป็น Web App แบบ Access = Anyone และ URL ถูกต้อง</p>
+      <button class="btn dark sm" style="margin-top:10px" onclick="boot()">ลองใหม่</button></div>`;
+  }
+}
+boot();
+</script>
+</body>
+</html>
