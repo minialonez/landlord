@@ -245,7 +245,7 @@ function el(id){ return document.getElementById(id); }
 const STATUS = {
   active:   {label:'กำลังดำเนิน', cls:'b-ac'},
   near:     {label:'ใกล้ครบ',    cls:'b-wn'},
-  overdue:  {label:'เกินกำหนด · ห้ามต่อ', cls:'b-dg'},
+  overdue:  {label:'ค้างชำระ / ขาด', cls:'b-dg'},
   redeemed: {label:'ไถ่ถอนแล้ว',  cls:'b-ok'},
   forfeited:{label:'หลุดขายฝาก',  cls:'b-gy'}
 };
@@ -323,6 +323,7 @@ function renderDashboard(){
   list.forEach(c=>(c.payments||[]).forEach(p=>{ if(String(p.date).slice(0,7)===ym) monthIn += (+p.amount||0); }));
 
   const overdue = list.filter(c=>c.status==='overdue');
+  const review = list.filter(c=>c.needsReview);
   const near = list.filter(c=>c.status==='near').sort((a,b)=>a.daysToDeadline-b.daysToDeadline);
   const dueLate = list.filter(c=>c.sched_overdue>0);
   const forfeited = list.filter(c=>c.status==='forfeited');
@@ -330,8 +331,12 @@ function renderDashboard(){
 
   let alerts='';
   if(overdue.length){
-    const rows = overdue.slice(0,3).map(c=>`<div class="d">${esc(c.seller_name)} · ${c.daysOverdue!=null?('เลยกำหนด '+c.daysOverdue+' วัน'):'เกินกำหนด'}${c.deed_count?(' · '+c.deed_count+' แปลง'):''}</div>`).join('');
-    alerts += `<div class="al dg"><span class="ic">⛔</span><div><div class="t">เกินกำหนดไถ่ — อย่าต่อสัญญา (${overdue.length})</div>${rows}<div class="d" style="margin-top:3px">เตรียมดำเนินการรับกรรมสิทธิ์ที่ดิน</div></div></div>`;
+    const rows = overdue.slice(0,3).map(c=>`<div class="d">${esc(c.seller_name)}${c.daysOverdue!=null?(' · เลยกำหนด '+c.daysOverdue+' วัน'):''}</div>`).join('');
+    alerts += `<div class="al dg"><span class="ic">⛔</span><div><div class="t">ค้างชำระ / ขาด (${overdue.length})</div>${rows}<div class="d" style="margin-top:3px">ทำเครื่องหมายไว้ · ห้ามต่อสัญญา</div></div></div>`;
+  }
+  if(review.length){
+    const rows = review.slice(0,4).map(c=>`<div class="d">${esc(c.seller_name)} · เลยกำหนด ${c.daysOverdue} วัน</div>`).join('');
+    alerts += `<div class="al wn"><span class="ic">⏰</span><div><div class="t">เลยกำหนดไถ่ — โปรดตรวจสอบ (${review.length})</div>${rows}<div class="d" style="margin-top:3px">เปิดสัญญาแล้วกดอัปเดตสถานะเอง</div></div></div>`;
   }
   if(dueLate.length){
     const totalDue = dueLate.reduce((s,c)=>s+(+c.sched_overdue_amount||0),0);
@@ -340,7 +345,7 @@ function renderDashboard(){
   }
   if(near.length){
     const rows = near.slice(0,3).map(c=>`<div class="d">${esc(c.seller_name)} · ครบ ${thDate(c.deadline)} (เหลือ ${c.daysToDeadline} วัน)</div>`).join('');
-    alerts += `<div class="al wn"><span class="ic">⏰</span><div><div class="t">ใกล้ครบกำหนดไถ่ (${near.length})</div>${rows}</div></div>`;
+    alerts += `<div class="al wn"><span class="ic">📅</span><div><div class="t">ใกล้ครบกำหนดไถ่ (${near.length})</div>${rows}</div></div>`;
   }
   if(forfeited.length){
     alerts += `<div class="al flat"><span class="ic mut">📍</span><div class="d">ที่ดินถือครองจากการหลุดขายฝาก · <b>${forfeited.length} สัญญา</b> มูลค่า ${baht(forfVal)}</div></div>`;
@@ -370,7 +375,7 @@ function renderDashboard(){
 
 /* ---------- LIST ---------- */
 function renderList(){
-  const chips = [['all','ทั้งหมด'],['overdue','เกินกำหนด'],['near','ใกล้ครบ'],['redeemed','ไถ่แล้ว'],['forfeited','หลุด']];
+  const chips = [['all','ทั้งหมด'],['overdue','ค้างชำระ'],['near','ใกล้ครบ'],['redeemed','ไถ่แล้ว'],['forfeited','หลุด']];
   const list = visibleContracts().sort(orderForList);
   el('app').innerHTML = `
     <div class="hd">
@@ -393,13 +398,14 @@ function cardHTML(c){
   const st = STATUS[c.status]||STATUS.active;
   const closed = c.status==='redeemed'||c.status==='forfeited';
   let ln2='';
-  if(c.status==='overdue') ln2=`<div class="ln dg">เลยกำหนดไถ่${c.daysOverdue!=null?(' '+c.daysOverdue+' วัน'):''} — เตรียมรับกรรมสิทธิ์</div>`;
+  if(c.status==='overdue') ln2=`<div class="ln dg">ค้างชำระ / ขาด${c.daysOverdue!=null?(' · เลยกำหนด '+c.daysOverdue+' วัน'):''}</div>`;
   else if(c.status==='redeemed') ln2=`<div class="ln">รับสินไถ่ ${thDate(c.redeem_date)} · ${baht(c.redeem_received||c.redemption_amount)}</div>`;
   else if(c.status==='forfeited') ln2=`<div class="ln">ได้กรรมสิทธิ์เด็ดขาด · ${baht(c.income_amount||c.sale_amount)}</div>`;
+  else if(c.needsReview) ln2=`<div class="ln" style="color:var(--wntx)">เลยกำหนดไถ่ ${c.daysOverdue} วัน — โปรดตรวจสอบ</div>`;
   else if(c.sched_overdue>0) ln2=`<div class="ln dg">ค้างชำระ ${c.sched_overdue} งวด · ${baht(c.sched_overdue_amount)} · ครบไถ่ ${thDate(c.deadline)}</div>`;
   else ln2=`<div class="ln">สินไถ่ ${baht(c.redemption_amount)} · ครบ ${thDate(c.deadline)}</div>`;
   const deeds = c.deed_count>1?(' · '+c.deed_count+' แปลง'):'';
-  return `<div class="card tap ${c.status==='overdue'?'dgline':''} ${closed?'dim':''}" onclick="go('detail','${c.id}')">
+  return `<div class="card tap ${(c.status==='overdue'||c.needsReview)?'dgline':''} ${closed?'dim':''}" onclick="go('detail','${c.id}')">
     <div class="top">
       <div class="nm">${esc(c.seller_name||'(ไม่ระบุชื่อ)')}</div>
       <span class="badge ${st.cls}">${st.label}</span>
@@ -418,8 +424,13 @@ function renderDetail(){
   let banner='';
   if(c.status==='overdue'){
     banner = `<div class="banner dg"><span class="ic">⛔</span><div>
-      <div class="t">เลยกำหนดไถ่ถอนแล้ว${c.daysOverdue!=null?(' '+c.daysOverdue+' วัน'):''}</div>
-      <div class="d">${c.pastGrace?'เลยสิทธิไถ่ (+6 เดือน) แล้ว — ':''}ห้ามต่อสัญญาขายฝาก ดำเนินการรับกรรมสิทธิ์ที่ดิน${c.deed_count>1?(' '+c.deed_count+' แปลง'):''}</div>
+      <div class="t">ค้างชำระ / ขาด${c.daysOverdue!=null?(' · เลยกำหนดไถ่ '+c.daysOverdue+' วัน'):''}</div>
+      <div class="d">${c.pastGrace?'เลยสิทธิไถ่ (+6 เดือน) แล้ว — ':''}ทำเครื่องหมายไว้เอง · ห้ามต่อสัญญา เตรียมดำเนินการต่อ</div>
+    </div></div>`;
+  } else if(c.needsReview){
+    banner = `<div class="banner" style="background:var(--wnbg)"><span class="ic" style="color:var(--wntx)">⏰</span><div>
+      <div class="t" style="color:var(--wntx)">เลยกำหนดไถ่แล้ว ${c.daysOverdue} วัน</div>
+      <div class="d" style="color:var(--wntx)">โปรดตรวจสอบ แล้วกดอัปเดตสถานะเอง (ต่อสัญญา / รับสินไถ่ / ทำเครื่องหมายหลุด หรือ ค้างชำระ)</div>
     </div></div>`;
   } else if(c.status==='redeemed'){
     banner = `<div class="banner ok"><span class="ic">✓</span><div>
@@ -487,7 +498,12 @@ function renderDetail(){
     </div>` : '';
 
   let actions='';
-  if(c.status!=='redeemed'&&c.status!=='forfeited'){
+  if(c.status==='redeemed'||c.status==='forfeited'){
+    actions = `
+      <div class="btnrow">
+        <button class="btn" onclick="doStatus('${c.id}','')">↩ คืนสถานะปกติ (เปิดสัญญาใหม่)</button>
+      </div>`;
+  } else {
     actions = `
       <div class="btnrow">
         <button class="btn dark" onclick="openPay('${c.id}','renew')">ต่อสัญญา</button>
@@ -495,7 +511,12 @@ function renderDetail(){
       </div>
       <div class="btnrow" style="margin-top:8px">
         <button class="btn ok" onclick="openPay('${c.id}','redeem')">รับสินไถ่ (ปิดสัญญา)</button>
-        <button class="btn ${c.status==='overdue'?'dg':''}" onclick="doForfeit('${c.id}')">หลุดขายฝาก</button>
+        <button class="btn" onclick="doForfeit('${c.id}')">ทำเครื่องหมายหลุด</button>
+      </div>
+      <div class="btnrow" style="margin-top:8px">
+        ${c.status==='overdue'
+          ? `<button class="btn" onclick="doStatus('${c.id}','')">↩ ยกเลิกค้างชำระ (คืนปกติ)</button>`
+          : `<button class="btn dg" onclick="doStatus('${c.id}','overdue')">ทำเครื่องหมายค้างชำระ / ขาด</button>`}
       </div>`;
   }
 
@@ -645,10 +666,16 @@ async function delPayment(pid,id){
   catch(e){ alert('ผิดพลาด: '+e.message); }
 }
 async function doForfeit(id){
-  if(!confirm('ยืนยัน: ที่ดินหลุดขายฝาก ได้กรรมสิทธิ์เด็ดขาด?\n(จะบันทึกเงินได้ = เงินต้น)')) return;
+  if(!confirm('ยืนยัน: ทำเครื่องหมายว่าที่ดินหลุดขายฝาก (ได้กรรมสิทธิ์เด็ดขาด)?\n(จะบันทึกเงินได้ = เงินต้น)')) return;
   const dateStr = prompt('วันที่ได้กรรมสิทธิ์ (ปี-เดือน-วัน)', new Date().toISOString().slice(0,10));
   if(dateStr===null) return;
   try{ showToast('กำลังบันทึก…'); await apiPost({action:'forfeit',id,redeem_date:dateStr}); await reload(); go('detail',id); showToast('บันทึกได้กรรมสิทธิ์แล้ว'); }
+  catch(e){ alert('ผิดพลาด: '+e.message); }
+}
+async function doStatus(id, value){
+  const msg = value==='overdue' ? 'ทำเครื่องหมายว่าสัญญานี้ค้างชำระ / ขาด?' : 'คืนสถานะเป็นปกติ (เปิดสัญญาอีกครั้ง)?';
+  if(!confirm(msg)) return;
+  try{ showToast('กำลังบันทึก…'); await apiPost({action:'setStatus',id,value}); await reload(); go('detail',id); showToast('อัปเดตสถานะแล้ว'); }
   catch(e){ alert('ผิดพลาด: '+e.message); }
 }
 async function doDelete(id){
