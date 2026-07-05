@@ -825,7 +825,7 @@ function autoFees(){
 function cancelForm(){ editId=null; view = selectedId? 'detail':'list'; render(); }
 async function saveForm(){
   const c = {
-    id: editId||'',
+    id: (editId && String(editId)!=='undefined') ? editId : '',
     owner: el('f_owner').value,
     nitikam: el('f_nitikam').value,
     seller_name: el('f_seller_name').value.trim(),
