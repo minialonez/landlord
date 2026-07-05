@@ -508,17 +508,18 @@ function renderDetail(){
   } else {
     actions = `
       <div class="btnrow">
-        <button class="btn dark" onclick="openPay('${c.id}','renew')">ต่อสัญญา</button>
         <button class="btn" onclick="openPay('${c.id}','pay')">บันทึกรับเงิน</button>
+        <button class="btn dark" onclick="openPay('${c.id}','renew')">ต่อสัญญา</button>
       </div>
       <div class="btnrow" style="margin-top:8px">
-        <button class="btn ok" onclick="openPay('${c.id}','redeem')">รับสินไถ่ (ปิดสัญญา)</button>
-        <button class="btn" onclick="doForfeit('${c.id}')">ทำเครื่องหมายหลุด</button>
+        <button class="btn" onclick="openPay('${c.id}','addprin')">＋ เพิ่มเงินต้น</button>
+        <button class="btn ok" onclick="openPay('${c.id}','redeem')">รับสินไถ่ (ปิด)</button>
       </div>
       <div class="btnrow" style="margin-top:8px">
         ${c.status==='overdue'
-          ? `<button class="btn" onclick="doStatus('${c.id}','')">↩ ยกเลิกค้างชำระ (คืนปกติ)</button>`
-          : `<button class="btn dg" onclick="doStatus('${c.id}','overdue')">ทำเครื่องหมายค้างชำระ / ขาด</button>`}
+          ? `<button class="btn" onclick="doStatus('${c.id}','')">↩ ยกเลิกค้างชำระ</button>`
+          : `<button class="btn dg" onclick="doStatus('${c.id}','overdue')">ทำเครื่องหมายค้าง</button>`}
+        <button class="btn" onclick="doForfeit('${c.id}')">ทำเครื่องหมายหลุด</button>
       </div>`;
   }
 
@@ -546,8 +547,9 @@ function renderDetail(){
       <div class="lbl">เงื่อนไขการเงิน</div>
       <div class="box">
         ${kv('เงินต้น (ขาย)',baht(c.sale_amount))}
+        ${c.principal_added>0?kv('เพิ่มเงินต้น','+ '+baht(c.principal_added)):''}
         ${c.principal_paid>0?kv('ปิดต้นแล้ว','− '+baht(c.principal_paid)):''}
-        ${(c.principal_paid>0||c.is_reducing)?kv('เงินต้นคงเหลือ','<span style="font-weight:500">'+baht(c.outstanding)+'</span>'):''}
+        ${(c.principal_paid>0||c.principal_added>0||c.is_reducing)?kv('เงินต้นคงเหลือ','<span style="font-weight:500">'+baht(c.outstanding)+'</span>'):''}
         ${kv('ดอกเบี้ย', c.is_reducing?(c.monthly_rate+'% ต่อเดือน · ลดต้นลดดอก'):(c.interest_pct+'% (ทั้งสัญญา)'))}
         ${kv('ดอกเบี้ย/เดือน (ปัจจุบัน)',baht(c.current_monthly||c.sched_per||0))}
         ${kv(c.is_reducing?'ปิดสัญญา = เงินต้นคงเหลือ':'สินไถ่ (เป้าหมาย)',baht(c.redemption_amount))}
@@ -601,7 +603,7 @@ async function onSlipPick(input){
 function openPay(id, mode, prefill){
   payCtx={id,mode}; slipData=null;
   const c = CONTRACTS.find(x=>String(x.id)===String(id));
-  const titles={renew:'ต่อสัญญา',pay:'รับชำระงวด',redeem:'รับสินไถ่ (ปิดสัญญา)'};
+  const titles={renew:'ต่อสัญญา',pay:'รับชำระงวด',redeem:'รับสินไถ่ (ปิดสัญญา)',addprin:'เพิ่มเงินต้น (จ่ายเพิ่มให้ลูกค้า)'};
   el('m_title').textContent=titles[mode]||'บันทึกรับเงิน';
   el('m_date').value=new Date().toISOString().slice(0,10);
   el('m_note').value=''; el('m_slip').value=''; el('m_slip_status').textContent='';
@@ -610,6 +612,7 @@ function openPay(id, mode, prefill){
   el('m_extra_wrap').style.display = mode==='pay'?'block':'none';
   if(mode==='renew'){ el('m_amount_label').textContent='ค่าต่อสัญญา / ดอกเบี้ย (บาท)'; el('m_amount').value=''; el('m_term').value='12'; }
   else if(mode==='redeem'){ el('m_amount_label').textContent='ยอดสินไถ่ที่รับจริง (บาท)'; el('m_amount').value=c?c.redemption_amount:''; }
+  else if(mode==='addprin'){ el('m_amount_label').textContent='เงินต้นที่จ่ายเพิ่ม (บาท)'; el('m_amount').value=''; }
   else { el('m_amount_label').textContent='ดอกเบี้ยงวดนี้ (บาท)'; el('m_amount').value=''; }
   if(prefill){
     if(prefill.amount!=null) el('m_amount').value=prefill.amount;
@@ -647,6 +650,10 @@ async function savePay(){
     const amount=numFromInput('m_amount');
     if(amount<=0){ alert('กรอกยอดสินไถ่'); return; }
     payload={action:'redeem',id,redeem_received:amount,redeem_date:date};
+  } else if(mode==='addprin'){
+    const amount=numFromInput('m_amount');
+    if(amount<=0){ alert('กรอกเงินต้นที่จ่ายเพิ่ม'); return; }
+    payload={action:'addPayment',contract_id:id,amount,date,type:'เพิ่มต้น',note};
   } else {
     const main=numFromInput('m_amount'), penalty=numFromInput('m_penalty'), other=numFromInput('m_other'), principal=numFromInput('m_principal');
     const comps=[];
