@@ -187,7 +187,7 @@ button{font-family:inherit;cursor:pointer}
   <div class="sheet">
     <div class="mhd"><span class="mt" id="m_title">บันทึกรับเงิน</span><button class="x" onclick="closePay()" aria-label="ปิด">✕</button></div>
     <div class="fld"><label>วันที่</label><input type="date" id="m_date"></div>
-    <div class="fld"><label id="m_amount_label">จำนวนเงิน (บาท)</label><input id="m_amount" inputmode="numeric" placeholder="เช่น 75000"></div>
+    <div class="fld"><label id="m_amount_label">จำนวนเงิน (บาท)</label><input id="m_amount" inputmode="numeric" placeholder="เช่น 7500" oninput="updatePayTotal()"></div>
     <div class="fld" id="m_term_wrap" style="display:none"><label>ต่ออายุสัญญา</label>
       <select id="m_term">
         <option value="3">3 เดือน</option>
@@ -196,13 +196,13 @@ button{font-family:inherit;cursor:pointer}
         <option value="24">2 ปี</option>
       </select>
     </div>
-    <div class="fld" id="m_type_wrap" style="display:none"><label>ประเภท</label>
-      <select id="m_type">
-        <option>ดอกเบี้ย</option>
-        <option>ไถ่บางส่วน</option>
-        <option>ค่าปรับ</option>
-        <option>อื่นๆ</option>
-      </select>
+    <div id="m_extra_wrap" style="display:none">
+      <div class="f2">
+        <div class="fld"><label>ค่าปรับล่าช้า (บาท)</label><input id="m_penalty" inputmode="numeric" placeholder="0" oninput="updatePayTotal()"></div>
+        <div class="fld"><label>ค่าอื่นๆ (บาท)</label><input id="m_other" inputmode="numeric" placeholder="0" oninput="updatePayTotal()"></div>
+      </div>
+      <div class="fld"><label>ระบุค่าอื่นๆ</label><input id="m_other_label" placeholder="เช่น ค่าทวงถาม, ค่าเอกสาร"></div>
+      <div id="m_total" style="background:var(--acbg);border-radius:9px;padding:9px 12px;font-size:14px;font-weight:500;color:var(--actx);margin-bottom:12px;display:flex;justify-content:space-between"><span>รวมรับทั้งสิ้น</span><span id="m_total_val">฿0</span></div>
     </div>
     <div class="fld"><label>แนบสลิปโอนเงิน (ยืนยันการจ่าย)</label>
       <input type="file" id="m_slip" accept="image/*" onchange="onSlipPick(this)">
@@ -580,17 +580,23 @@ function openPay(id, mode, prefill){
   el('m_title').textContent=titles[mode]||'บันทึกรับเงิน';
   el('m_date').value=new Date().toISOString().slice(0,10);
   el('m_note').value=''; el('m_slip').value=''; el('m_slip_status').textContent='';
+  el('m_penalty').value=''; el('m_other').value=''; el('m_other_label').value='';
   el('m_term_wrap').style.display = mode==='renew'?'block':'none';
-  el('m_type_wrap').style.display = mode==='pay'?'block':'none';
+  el('m_extra_wrap').style.display = mode==='pay'?'block':'none';
   if(mode==='renew'){ el('m_amount_label').textContent='ค่าต่อสัญญา / ดอกเบี้ย (บาท)'; el('m_amount').value=''; el('m_term').value='12'; }
   else if(mode==='redeem'){ el('m_amount_label').textContent='ยอดสินไถ่ที่รับจริง (บาท)'; el('m_amount').value=c?c.redemption_amount:''; }
-  else { el('m_amount_label').textContent='จำนวนเงิน (บาท)'; el('m_amount').value=''; el('m_type').value='ดอกเบี้ย'; }
+  else { el('m_amount_label').textContent='ดอกเบี้ยงวดนี้ (บาท)'; el('m_amount').value=''; }
   if(prefill){
     if(prefill.amount!=null) el('m_amount').value=prefill.amount;
     if(prefill.note!=null) el('m_note').value=prefill.note;
   }
+  updatePayTotal();
   el('modal').classList.remove('hidden');
   setTimeout(()=>el('m_amount').focus(),60);
+}
+function updatePayTotal(){
+  const t = numFromInput('m_amount')+numFromInput('m_penalty')+numFromInput('m_other');
+  const e=el('m_total_val'); if(e) e.textContent=baht(t);
 }
 /* จ่ายงวดถัดไปที่ยังไม่จ่าย — เติมยอด+หมายเหตุให้อัตโนมัติ */
 function payNext(id){
@@ -603,18 +609,33 @@ function payNext(id){
 function closePay(){ el('modal').classList.add('hidden'); payCtx=null; slipData=null; }
 async function savePay(){
   if(!payCtx) return;
-  const amount=String(el('m_amount').value).replace(/,/g,'');
-  const date=el('m_date').value, note=el('m_note').value.trim();
-  if(!amount||isNaN(+amount)||+amount<=0){ alert('กรอกจำนวนเงินให้ถูกต้อง'); return; }
-  if(!date){ alert('เลือกวันที่'); return; }
-  if(!slipData){ if(!confirm('ยังไม่ได้แนบสลิปโอนเงิน — ต้องการบันทึกโดยไม่มีหลักฐานหรือไม่?')) return; }
   const id=payCtx.id, mode=payCtx.mode;
-  const slip = slipData? {slip_base64:slipData, slip_name:'slip_'+id+'_'+date+'.jpg'} : {};
+  const date=el('m_date').value, note=el('m_note').value.trim();
+  if(!date){ alert('เลือกวันที่'); return; }
+
+  let payload;
+  if(mode==='renew'){
+    const amount=numFromInput('m_amount');
+    if(amount<=0){ alert('กรอกค่าต่อสัญญา'); return; }
+    payload={action:'renew',contract_id:id,amount,date,term_months:parseInt(el('m_term').value)||12,note};
+  } else if(mode==='redeem'){
+    const amount=numFromInput('m_amount');
+    if(amount<=0){ alert('กรอกยอดสินไถ่'); return; }
+    payload={action:'redeem',id,redeem_received:amount,redeem_date:date};
+  } else {
+    const main=numFromInput('m_amount'), penalty=numFromInput('m_penalty'), other=numFromInput('m_other');
+    const comps=[];
+    if(main>0) comps.push({type:'ดอกเบี้ย',amount:main});
+    if(penalty>0) comps.push({type:'ค่าปรับ',amount:penalty});
+    if(other>0) comps.push({type:'ค่าอื่นๆ',amount:other,note:el('m_other_label').value.trim()||'ค่าอื่นๆ'});
+    if(!comps.length){ alert('กรอกจำนวนเงินอย่างน้อย 1 ช่อง'); return; }
+    payload={action:'addPaymentMulti',contract_id:id,date,note,components:comps};
+  }
+  if(!slipData){ if(!confirm('ยังไม่ได้แนบสลิปโอนเงิน — ต้องการบันทึกโดยไม่มีหลักฐานหรือไม่?')) return; }
+  if(slipData){ payload.slip_base64=slipData; payload.slip_name='slip_'+id+'_'+date+'.jpg'; }
   try{
     showToast('กำลังบันทึก…');
-    if(mode==='renew') await apiPost(Object.assign({action:'renew',contract_id:id,amount,date,term_months:parseInt(el('m_term').value)||12,note},slip));
-    else if(mode==='redeem') await apiPost(Object.assign({action:'redeem',id,redeem_received:amount,redeem_date:date},slip));
-    else await apiPost(Object.assign({action:'addPayment',contract_id:id,amount,date,type:el('m_type').value,note},slip));
+    await apiPost(payload);
     closePay(); await reload(); go('detail',id); showToast('บันทึกแล้ว');
   }catch(e){ alert('ผิดพลาด: '+e.message); }
 }
