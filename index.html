@@ -443,7 +443,9 @@ function renderDetail(){
       <div class="d">ที่ดินตกเป็นกรรมสิทธิ์ · เงินได้ ${baht(c.income_amount||c.sale_amount)}</div></div></div>`;
   }
 
-  const payRows = (c.payments||[]).slice().reverse().map(p=>`
+  const incomePays = (c.payments||[]).filter(p=>p.type!=='เพิ่มต้น'&&p.type!=='ปิดต้น');
+  const princPays = (c.payments||[]).filter(p=>p.type==='เพิ่มต้น'||p.type==='ปิดต้น');
+  const payRows = incomePays.slice().reverse().map(p=>`
     <div class="payrow">
       <div><div class="pd">${thDate(p.date)}</div><div class="pt">${esc(p.type||'-')}${p.term_months?(' · +'+p.term_months+' ด.'):''}${p.note&&p.type!=='ไถ่ถอน'?(' · '+esc(p.note)):''}</div></div>
       <div style="display:flex;align-items:center;gap:8px">
@@ -452,11 +454,25 @@ function renderDetail(){
         <button class="pdel" onclick="delPayment('${p.pid}','${c.id}')" aria-label="ลบ">✕</button>
       </div>
     </div>`).join('');
+  const princRows = princPays.slice().reverse().map(p=>{
+    const isAdd=p.type==='เพิ่มต้น';
+    return `<div class="payrow">
+      <div><div class="pd">${thDate(p.date)}</div><div class="pt">${isAdd?'เพิ่มเงินต้น (จ่ายเพิ่ม)':'ปิดต้น (รับคืน)'}${p.note?(' · '+esc(p.note)):''}</div></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        ${p.slip_url?`<a href="${esc(p.slip_url)}" target="_blank" rel="noopener" class="sliplink">สลิป</a>`:''}
+        <div class="pa" style="color:${isAdd?'var(--actx)':'var(--oktx)'}">${isAdd?'+':'−'} ${baht(p.amount)}</div>
+        <button class="pdel" onclick="delPayment('${p.pid}','${c.id}')" aria-label="ลบ">✕</button>
+      </div>
+    </div>`;
+  }).join('');
   const paymentsSection = `
-    <div class="lbl">ประวัติการรับเงิน${c.payment_count?(' ('+c.payment_count+' รายการ)'):''}</div>
+    <div class="lbl">ประวัติการรับเงิน${incomePays.length?(' ('+incomePays.length+' รายการ)'):''}</div>
     <div class="box" style="padding:4px 13px">
       ${payRows || '<div class="mut" style="font-size:13px;padding:8px 0">ยังไม่มีการรับเงิน</div>'}
-    </div>`;
+    </div>
+    ${princPays.length?`
+    <div class="lbl">ประวัติเงินต้น (เพิ่ม / ปิด)</div>
+    <div class="box" style="padding:4px 13px">${princRows}</div>`:''}`;
 
   // ----- ตารางงวด -----
   let scheduleSection='';
