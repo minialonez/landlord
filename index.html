@@ -197,6 +197,7 @@ button{font-family:inherit;cursor:pointer}
       </select>
     </div>
     <div id="m_extra_wrap" style="display:none">
+      <div class="fld"><label>ปิดเงินต้น (บางส่วน) — ลดต้นลดดอก</label><input id="m_principal" inputmode="numeric" placeholder="0" oninput="updatePayTotal()"></div>
       <div class="f2">
         <div class="fld"><label>ค่าปรับล่าช้า (บาท)</label><input id="m_penalty" inputmode="numeric" placeholder="0" oninput="updatePayTotal()"></div>
         <div class="fld"><label>ค่าอื่นๆ (บาท)</label><input id="m_other" inputmode="numeric" placeholder="0" oninput="updatePayTotal()"></div>
@@ -544,9 +545,11 @@ function renderDetail(){
       <div class="lbl">เงื่อนไขการเงิน</div>
       <div class="box">
         ${kv('เงินต้น (ขาย)',baht(c.sale_amount))}
-        ${kv('ดอกเบี้ย',c.interest_pct+'% (ทั้งสัญญา)')}
-        ${kv('ดอกเบี้ย/เดือน',baht(c.monthly_interest||c.sched_per||(c.term_months?Math.round(c.sale_amount*c.interest_pct/100/c.term_months):0)))}
-        ${kv('สินไถ่ (เป้าหมาย)',baht(c.redemption_amount))}
+        ${c.principal_paid>0?kv('ปิดต้นแล้ว','− '+baht(c.principal_paid)):''}
+        ${(c.principal_paid>0||c.is_reducing)?kv('เงินต้นคงเหลือ','<span style="font-weight:500">'+baht(c.outstanding)+'</span>'):''}
+        ${kv('ดอกเบี้ย', c.is_reducing?(c.monthly_rate+'% ต่อเดือน · ลดต้นลดดอก'):(c.interest_pct+'% (ทั้งสัญญา)'))}
+        ${kv('ดอกเบี้ย/เดือน (ปัจจุบัน)',baht(c.current_monthly||c.sched_per||0))}
+        ${kv(c.is_reducing?'ปิดสัญญา = เงินต้นคงเหลือ':'สินไถ่ (เป้าหมาย)',baht(c.redemption_amount))}
         ${kv('รับมาแล้ว',baht(c.paid_total||0))}
         ${kv('กำไรรับจริง','<span style="color:var(--oktx);font-weight:500">'+baht(c.realized_profit||0)+'</span>')}
         ${kv('วันทำสัญญา',thDate(c.contract_date))}
@@ -601,7 +604,7 @@ function openPay(id, mode, prefill){
   el('m_title').textContent=titles[mode]||'บันทึกรับเงิน';
   el('m_date').value=new Date().toISOString().slice(0,10);
   el('m_note').value=''; el('m_slip').value=''; el('m_slip_status').textContent='';
-  el('m_penalty').value=''; el('m_other').value=''; el('m_other_label').value='';
+  el('m_penalty').value=''; el('m_other').value=''; el('m_other_label').value=''; el('m_principal').value='';
   el('m_term_wrap').style.display = mode==='renew'?'block':'none';
   el('m_extra_wrap').style.display = mode==='pay'?'block':'none';
   if(mode==='renew'){ el('m_amount_label').textContent='ค่าต่อสัญญา / ดอกเบี้ย (บาท)'; el('m_amount').value=''; el('m_term').value='12'; }
@@ -616,7 +619,7 @@ function openPay(id, mode, prefill){
   setTimeout(()=>el('m_amount').focus(),60);
 }
 function updatePayTotal(){
-  const t = numFromInput('m_amount')+numFromInput('m_penalty')+numFromInput('m_other');
+  const t = numFromInput('m_amount')+numFromInput('m_penalty')+numFromInput('m_other')+numFromInput('m_principal');
   const e=el('m_total_val'); if(e) e.textContent=baht(t);
 }
 /* จ่ายงวดถัดไปที่ยังไม่จ่าย — เติมยอด+หมายเหตุให้อัตโนมัติ */
@@ -644,9 +647,10 @@ async function savePay(){
     if(amount<=0){ alert('กรอกยอดสินไถ่'); return; }
     payload={action:'redeem',id,redeem_received:amount,redeem_date:date};
   } else {
-    const main=numFromInput('m_amount'), penalty=numFromInput('m_penalty'), other=numFromInput('m_other');
+    const main=numFromInput('m_amount'), penalty=numFromInput('m_penalty'), other=numFromInput('m_other'), principal=numFromInput('m_principal');
     const comps=[];
     if(main>0) comps.push({type:'ดอกเบี้ย',amount:main});
+    if(principal>0) comps.push({type:'ปิดต้น',amount:principal});
     if(penalty>0) comps.push({type:'ค่าปรับ',amount:penalty});
     if(other>0) comps.push({type:'ค่าอื่นๆ',amount:other,note:el('m_other_label').value.trim()||'ค่าอื่นๆ'});
     if(!comps.length){ alert('กรอกจำนวนเงินอย่างน้อย 1 ช่อง'); return; }
@@ -718,11 +722,18 @@ function renderForm(){
           <select id="f_term">${[[3,'3 เดือน'],[6,'6 เดือน'],[12,'1 ปี'],[24,'2 ปี'],[36,'3 ปี']].map(([m,l])=>`<option value="${m}" ${(+v('term_months',12))===m?'selected':''}>${l}</option>`).join('')}</select></div>
       </div>
 
+      <div class="fld"><label>วิธีคิดดอกเบี้ย</label>
+        <select id="f_intmode" onchange="toggleIntMode()">
+          <option value="flat">คงที่ (บาท/เดือน)</option>
+          <option value="reducing">ลดต้นลดดอก (% ต่อเดือน)</option>
+        </select>
+      </div>
       <div class="f2">
         <div class="fld"><label>เงินต้น (ขาย)</label><input id="f_sale" value="${esc(v('sale_amount'))}" inputmode="numeric" placeholder="เช่น 500000"></div>
-        <div class="fld"><label>ดอกเบี้ย % (รวมทั้งสัญญา)</label><input id="f_pct" value="${esc(v('interest_pct',15))}" inputmode="decimal" placeholder="เช่น 18 (=1.5%/ด.×12)"></div>
+        <div class="fld" id="f_pct_wrap"><label>ดอกเบี้ย % (รวมสัญญา)</label><input id="f_pct" value="${esc(v('interest_pct',15))}" inputmode="decimal" placeholder="เช่น 18"></div>
+        <div class="fld" id="f_rate_wrap" style="display:none"><label>อัตรา % ต่อเดือน</label><input id="f_rate" value="${esc(v('monthly_rate'))}" inputmode="decimal" placeholder="เช่น 1.5"></div>
       </div>
-      <div class="fld"><label>ดอกเบี้ย/เดือน (บาท) — เว้นว่างได้ จะคิดให้อัตโนมัติ</label><input id="f_monthly" value="${esc(v('monthly_interest'))}" inputmode="numeric" placeholder="คิดอัตโนมัติจากดอกเบี้ย%"></div>
+      <div class="fld" id="f_monthly_wrap"><label>ดอกเบี้ย/เดือน (บาท) — เว้นว่างได้ จะคิดให้อัตโนมัติ</label><input id="f_monthly" value="${esc(v('monthly_interest'))}" inputmode="numeric" placeholder="คิดอัตโนมัติจากดอกเบี้ย%"></div>
       <div class="f2">
         <div class="fld"><label>ราคาประเมิน</label><input id="f_appraised" value="${esc(v('appraised'))}" inputmode="numeric" placeholder="ราคาประเมิน (ถ้ามี)"></div>
         <div class="fld"><label>ถือครอง (ปี)</label><input id="f_hold" value="${esc(v('hold_years'))}" inputmode="numeric" placeholder="ปี (ใช้คิดภาษี)"></div>
@@ -749,9 +760,18 @@ function renderForm(){
         <button class="btn dark" onclick="saveForm()">บันทึก</button>
       </div>
     </div>`;
-  ['f_sale','f_pct','f_contract_date','f_term','f_monthly'].forEach(id=>{
-    const e=el(id); e.addEventListener('input',updatePreview); e.addEventListener('change',updatePreview);
+  ['f_sale','f_pct','f_rate','f_contract_date','f_term','f_monthly'].forEach(id=>{
+    const e=el(id); if(e){ e.addEventListener('input',updatePreview); e.addEventListener('change',updatePreview); }
   });
+  el('f_intmode').value = (c && numFromInput_c(c,'monthly_rate')>0) ? 'reducing' : 'flat';
+  toggleIntMode();
+}
+function numFromInput_c(c,k){ const n=Number(String(c[k]||'').replace(/,/g,'')); return isNaN(n)?0:n; }
+function toggleIntMode(){
+  const reducing = el('f_intmode').value==='reducing';
+  el('f_pct_wrap').style.display = reducing?'none':'block';
+  el('f_rate_wrap').style.display = reducing?'block':'none';
+  el('f_monthly_wrap').style.display = reducing?'none':'block';
   updatePreview();
 }
 function numFromInput(id){ const e=el(id); if(!e) return 0; const n=Number(String(e.value).replace(/,/g,'')); return isNaN(n)?0:n; }
@@ -761,18 +781,28 @@ function addMonthsISO(iso,m){
   return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
 }
 function updatePreview(){
-  const sale=numFromInput('f_sale'), pct=numFromInput('f_pct')||15;
-  const redemption=Math.round(sale*(1+pct/100));
+  const sale=numFromInput('f_sale');
+  const reducing = el('f_intmode') && el('f_intmode').value==='reducing';
   const cd=el('f_contract_date').value, term=parseInt(el('f_term').value)||12;
   const deadline=cd?addMonthsISO(cd,term):'';
   const grace=deadline?addMonthsISO(deadline,6):'';
-  const monthly = numFromInput('f_monthly') || Math.round((sale*pct/100)/term);
-  el('preview').innerHTML =
-    kv('สินไถ่ (คำนวณ)',baht(redemption))+
-    kv('ดอกเบี้ย/เดือน (งวดละ)','<span style="font-weight:500">'+baht(monthly)+'</span>')+
-    kv('กำไรเต็มสัญญา',baht(redemption-sale))+
-    (deadline?kv('ครบกำหนดไถ่',thDate(deadline)):'')+
-    (grace?kv('สิ้นสุดสิทธิไถ่ (+6 ด.)',thDate(grace)):'');
+  let html='';
+  if(reducing){
+    const rate=numFromInput('f_rate');
+    const monthly=Math.round(sale*rate/100);
+    html = kv('ดอกเบี้ยเดือนแรก','<span style="font-weight:500">'+baht(monthly)+'</span>')+
+           kv('วิธีคิด','ลดต้นลดดอก '+(rate||0)+'%/เดือน')+
+           kv('ปิดสัญญา = เงินต้นคงเหลือ',baht(sale));
+  } else {
+    const pct=numFromInput('f_pct')||15;
+    const redemption=Math.round(sale*(1+pct/100));
+    const monthly = numFromInput('f_monthly') || Math.round((sale*pct/100)/term);
+    html = kv('สินไถ่ (คำนวณ)',baht(redemption))+
+           kv('ดอกเบี้ย/เดือน (งวดละ)','<span style="font-weight:500">'+baht(monthly)+'</span>')+
+           kv('กำไรเต็มสัญญา',baht(redemption-sale));
+  }
+  html += (deadline?kv('ครบกำหนดไถ่',thDate(deadline)):'')+(grace?kv('สิ้นสุดสิทธิไถ่ (+6 ด.)',thDate(grace)):'');
+  el('preview').innerHTML = html;
 }
 function autoFees(){
   const sale=numFromInput('f_sale'), appraised=numFromInput('f_appraised')||sale, hold=numFromInput('f_hold');
@@ -802,7 +832,8 @@ async function saveForm(){
     term_months: parseInt(el('f_term').value)||12,
     sale_amount: numFromInput('f_sale'),
     interest_pct: numFromInput('f_pct')||15,
-    monthly_interest: el('f_monthly').value? numFromInput('f_monthly'):'',
+    monthly_rate: (el('f_intmode').value==='reducing') ? (numFromInput('f_rate')||'') : '',
+    monthly_interest: (el('f_intmode').value==='reducing') ? '' : (el('f_monthly').value? numFromInput('f_monthly'):''),
     appraised: numFromInput('f_appraised')||'',
     hold_years: el('f_hold').value? numFromInput('f_hold'):'',
     fee_personal: numFromInput('f_fee_personal')||'',
