@@ -472,6 +472,7 @@ function renderDetail(){
         <span style="font-weight:400;color:var(--mut);font-size:12px">จ่ายแล้ว ${c.sched_paid}/${c.sched_total} งวด</span>
       </div>
       ${overdueLine}
+      ${c.sched_paid < c.sched_total ? `<button class="btn dark" style="width:100%;margin-bottom:10px" onclick="payNext('${c.id}')">＋ รับชำระงวดถัดไป · ${baht(c.sched_per)}</button>`:''}
       <div class="box" style="padding:4px 13px">${rows.join('')}</div>`;
   }
 
@@ -572,10 +573,10 @@ async function onSlipPick(input){
   try{ slipData=await fileToResizedDataURL(f); el('m_slip_status').textContent='✓ แนบสลิปแล้ว'; el('m_slip_status').style.color='var(--oktx)'; }
   catch(e){ slipData=null; el('m_slip_status').textContent='อ่านรูปไม่สำเร็จ ลองใหม่'; el('m_slip_status').style.color='var(--dgtx)'; }
 }
-function openPay(id, mode){
+function openPay(id, mode, prefill){
   payCtx={id,mode}; slipData=null;
   const c = CONTRACTS.find(x=>String(x.id)===String(id));
-  const titles={renew:'ต่อสัญญา',pay:'บันทึกรับเงิน',redeem:'รับสินไถ่ (ปิดสัญญา)'};
+  const titles={renew:'ต่อสัญญา',pay:'รับชำระงวด',redeem:'รับสินไถ่ (ปิดสัญญา)'};
   el('m_title').textContent=titles[mode]||'บันทึกรับเงิน';
   el('m_date').value=new Date().toISOString().slice(0,10);
   el('m_note').value=''; el('m_slip').value=''; el('m_slip_status').textContent='';
@@ -584,8 +585,20 @@ function openPay(id, mode){
   if(mode==='renew'){ el('m_amount_label').textContent='ค่าต่อสัญญา / ดอกเบี้ย (บาท)'; el('m_amount').value=''; el('m_term').value='12'; }
   else if(mode==='redeem'){ el('m_amount_label').textContent='ยอดสินไถ่ที่รับจริง (บาท)'; el('m_amount').value=c?c.redemption_amount:''; }
   else { el('m_amount_label').textContent='จำนวนเงิน (บาท)'; el('m_amount').value=''; el('m_type').value='ดอกเบี้ย'; }
+  if(prefill){
+    if(prefill.amount!=null) el('m_amount').value=prefill.amount;
+    if(prefill.note!=null) el('m_note').value=prefill.note;
+  }
   el('modal').classList.remove('hidden');
   setTimeout(()=>el('m_amount').focus(),60);
+}
+/* จ่ายงวดถัดไปที่ยังไม่จ่าย — เติมยอด+หมายเหตุให้อัตโนมัติ */
+function payNext(id){
+  const c=CONTRACTS.find(x=>String(x.id)===String(id));
+  if(!c||!c.schedule||!c.schedule.length) return openPay(id,'pay');
+  const next=c.schedule.find(g=>g.status!=='paid');
+  if(!next){ showToast('จ่ายครบทุกงวดแล้ว'); return; }
+  openPay(id,'pay',{amount:next.amount, note:'ชำระงวดที่ '+next.n+' (ครบ '+thDate(next.due)+')'});
 }
 function closePay(){ el('modal').classList.add('hidden'); payCtx=null; slipData=null; }
 async function savePay(){
@@ -641,15 +654,15 @@ function renderForm(){
         <div class="fld"><label>ประเภท</label>
           <select id="f_nitikam">${['ขายฝาก','ขายซื้อคืน'].map(o=>`<option ${v('nitikam','ขายฝาก')===o?'selected':''}>${o}</option>`).join('')}</select></div>
       </div>
-      <div class="fld"><label>ชื่อ-นามสกุล ผู้ขายฝาก</label><input id="f_seller_name" value="${esc(v('seller_name'))}"></div>
-      <div class="fld"><label>เลขบัตรประชาชน</label><input id="f_seller_id" value="${esc(v('seller_id'))}" inputmode="numeric"></div>
+      <div class="fld"><label>ชื่อ-นามสกุล ผู้ขายฝาก</label><input id="f_seller_name" value="${esc(v('seller_name'))}" placeholder="เช่น นายสมชาย ใจดี"></div>
+      <div class="fld"><label>เลขบัตรประชาชน</label><input id="f_seller_id" value="${esc(v('seller_id'))}" inputmode="numeric" placeholder="เลข 13 หลัก"></div>
 
       <div class="f2">
         <div class="fld"><label>ชนิดเอกสารสิทธิ์</label>
           <select id="f_deed_type">${['น.ส.4 จ.','น.ส.4 ง.','น.ส.3 ก.','โฉนด','อื่นๆ'].map(o=>`<option ${v('deed_type')===o?'selected':''}>${o}</option>`).join('')}</select></div>
-        <div class="fld"><label>ที่ตั้ง (อำเภอ จังหวัด)</label><input id="f_location" value="${esc(v('location'))}"></div>
+        <div class="fld"><label>ที่ตั้ง (อำเภอ จังหวัด)</label><input id="f_location" value="${esc(v('location'))}" placeholder="เช่น เมือง ยะลา"></div>
       </div>
-      <div class="fld"><label>เลขที่โฉนด (หลายแปลงคั่นด้วย ,)</label><textarea id="f_deed_no">${esc(v('deed_no'))}</textarea></div>
+      <div class="fld"><label>เลขที่โฉนด (หลายแปลงคั่นด้วย ,)</label><textarea id="f_deed_no" placeholder="เช่น 12345  (หลายแปลง: 12345, 12346)">${esc(v('deed_no'))}</textarea></div>
 
       <div class="f2">
         <div class="fld"><label>วันทำสัญญา</label><input type="date" id="f_contract_date" value="${esc(v('contract_date'))}"></div>
@@ -658,13 +671,13 @@ function renderForm(){
       </div>
 
       <div class="f2">
-        <div class="fld"><label>เงินต้น (ขาย)</label><input id="f_sale" value="${esc(v('sale_amount'))}" inputmode="numeric"></div>
-        <div class="fld"><label>ดอกเบี้ย % (รวมทั้งสัญญา)</label><input id="f_pct" value="${esc(v('interest_pct',15))}" inputmode="decimal"></div>
+        <div class="fld"><label>เงินต้น (ขาย)</label><input id="f_sale" value="${esc(v('sale_amount'))}" inputmode="numeric" placeholder="เช่น 500000"></div>
+        <div class="fld"><label>ดอกเบี้ย % (รวมทั้งสัญญา)</label><input id="f_pct" value="${esc(v('interest_pct',15))}" inputmode="decimal" placeholder="เช่น 18 (=1.5%/ด.×12)"></div>
       </div>
       <div class="fld"><label>ดอกเบี้ย/เดือน (บาท) — เว้นว่างได้ จะคิดให้อัตโนมัติ</label><input id="f_monthly" value="${esc(v('monthly_interest'))}" inputmode="numeric" placeholder="คิดอัตโนมัติจากดอกเบี้ย%"></div>
       <div class="f2">
-        <div class="fld"><label>ราคาประเมิน</label><input id="f_appraised" value="${esc(v('appraised'))}" inputmode="numeric"></div>
-        <div class="fld"><label>ถือครอง (ปี)</label><input id="f_hold" value="${esc(v('hold_years'))}" inputmode="numeric"></div>
+        <div class="fld"><label>ราคาประเมิน</label><input id="f_appraised" value="${esc(v('appraised'))}" inputmode="numeric" placeholder="ราคาประเมิน (ถ้ามี)"></div>
+        <div class="fld"><label>ถือครอง (ปี)</label><input id="f_hold" value="${esc(v('hold_years'))}" inputmode="numeric" placeholder="ปี (ใช้คิดภาษี)"></div>
       </div>
 
       <div class="preview" id="preview"></div>
