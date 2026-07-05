@@ -488,14 +488,15 @@ function renderDetail(){
       <div class="box" style="padding:4px 13px">${rows.join('')}</div>`;
   }
 
-  const fees = (c.fee_personal||c.fee_juristic||c.tax_sbt||c.tax_local||c.wht) ? `
-    <div class="lbl">ค่าธรรมเนียม & ภาษี (กรมที่ดิน)</div>
+  const fees = (c.fee_personal||c.fee_juristic||c.tax_sbt||c.tax_local||c.wht||c.other_expense) ? `
+    <div class="lbl">ค่าธรรมเนียม ภาษี & ค่าใช้จ่าย</div>
     <div class="box">
       ${c.fee_personal?kv('ค่าธรรมเนียม (บุคคล)',baht(c.fee_personal)):''}
       ${c.fee_juristic?kv('ค่าธรรมเนียม (นิติบุคคล)',baht(c.fee_juristic)):''}
       ${c.tax_sbt?kv('ภาษีธุรกิจเฉพาะ',baht(c.tax_sbt)):''}
       ${c.tax_local?kv('ภาษีท้องถิ่น',baht(c.tax_local)):''}
       ${c.wht?kv('หัก ณ ที่จ่าย',baht(c.wht)):''}
+      ${c.other_expense?kv('ค่าใช้จ่ายอื่นๆ'+(c.other_expense_note?(' · '+esc(c.other_expense_note)):''),baht(c.other_expense)):''}
     </div>` : '';
 
   let actions='';
@@ -753,6 +754,10 @@ function renderForm(){
         <div class="fld"><label>ภาษีธุรกิจเฉพาะ</label><input id="f_tax_sbt" value="${esc(v('tax_sbt'))}" inputmode="numeric"></div>
         <div class="fld"><label>ภาษีท้องถิ่น</label><input id="f_tax_local" value="${esc(v('tax_local'))}" inputmode="numeric"></div>
       </div>
+      <div class="f2">
+        <div class="fld"><label>ค่าใช้จ่ายอื่นๆ (บาท)</label><input id="f_other_expense" value="${esc(v('other_expense'))}" inputmode="numeric" placeholder="0"></div>
+        <div class="fld"><label>รายละเอียดค่าใช้จ่าย</label><input id="f_other_expense_note" value="${esc(v('other_expense_note'))}" placeholder="เช่น ค่าเดินทาง, ค่ารังวัด"></div>
+      </div>
       <div class="fld"><label>หมายเหตุ</label><textarea id="f_note">${esc(v('note'))}</textarea></div>
 
       <div class="btnrow" style="margin-top:4px">
@@ -840,6 +845,8 @@ async function saveForm(){
     fee_juristic: numFromInput('f_fee_juristic')||'',
     tax_sbt: numFromInput('f_tax_sbt')||'',
     tax_local: numFromInput('f_tax_local')||'',
+    other_expense: numFromInput('f_other_expense')||'',
+    other_expense_note: el('f_other_expense_note').value.trim(),
     note: el('f_note').value.trim()
   };
   if(!c.seller_name){ alert('กรุณากรอกชื่อผู้ขายฝาก'); return; }
