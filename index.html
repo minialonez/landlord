@@ -1,920 +1,752 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>ทะเบียนขายฝากที่ดิน</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<style>
-:root{
-  --bg:#f5f6f8; --card:#ffffff; --b:#e6e8eb; --b2:#d3d6db;
-  --tx:#1a1d21; --mut:#6b7280; --mut2:#9aa1ab;
-  --ac:#2563eb; --acbg:#eff6ff; --actx:#1d4ed8;
-  --ok:#16a34a; --okbg:#f0fdf4; --oktx:#15803d;
-  --wn:#b45309; --wnbg:#fffbeb; --wntx:#92400e;
-  --dg:#dc2626; --dgbg:#fef2f2; --dgtx:#b91c1c;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Noto Sans Thai',sans-serif;background:var(--bg);color:var(--tx);font-size:15px;line-height:1.55;-webkit-tap-highlight-color:transparent}
-.wrap{max-width:480px;margin:0 auto;min-height:100vh;background:var(--bg);padding-bottom:74px;position:relative}
-.app{background:var(--card)}
-button{font-family:inherit;cursor:pointer}
-.hidden{display:none!important}
+/*************************************************************
+ * ทะเบียนขายฝากที่ดิน — Backend (Google Apps Script)
+ * ใช้แบบ Container-bound: สร้างไว้ใน Google Sheet โดยตรง
+ *
+ * วิธีติดตั้ง (สรุป — ดูละเอียดใน SETUP_GUIDE.md):
+ *  1) สร้าง Google Sheet เปล่า 1 ไฟล์
+ *  2) เมนู Extensions > Apps Script  แล้ววางโค้ดนี้แทนของเดิมทั้งหมด
+ *  3) กดเลือกฟังก์ชัน setup แล้วกด Run หนึ่งครั้ง (อนุญาตสิทธิ์)
+ *  4) Deploy > New deployment > Web app
+ *        - Execute as: Me
+ *        - Who has access: Anyone
+ *     คัดลอก URL ที่ได้ (ลงท้าย /exec) ไปวางในไฟล์ index.html
+ *************************************************************/
 
-/* header */
-.hd{padding:16px 18px 12px;background:var(--card);border-bottom:.5px solid var(--b);position:sticky;top:0;z-index:20}
-.hd .sub{font-size:12px;color:var(--mut2)}
-.hd .ttl{font-size:20px;font-weight:600}
-.hd-row{display:flex;justify-content:space-between;align-items:center}
+const SHEET_NAME = 'CONTRACTS';
+const NEAR_DAYS  = 60;     // กี่วันก่อนครบกำหนด ถึงจะนับว่า "ใกล้ครบ"
+const GRACE_MONTHS = 6;    // สิทธิไถ่ขยายอัตโนมัติ +6 เดือน (ตาม พ.ร.บ.ขายฝาก)
 
-/* owner toggle */
-.owner{display:flex;gap:6px;margin-top:10px}
-.owner button{font-size:13px;padding:5px 14px;border-radius:20px;border:.5px solid var(--b2);background:transparent;color:var(--mut)}
-.owner button.on{background:var(--tx);color:#fff;border-color:var(--tx)}
+const HEADERS = [
+  'id','owner','doc_no','nitikam','deed_type','deed_no','location',
+  'contract_date','term_months','deadline','grace_deadline',
+  'seller_name','seller_id','sale_amount','appraised',
+  'fee_personal','fee_juristic','tax_sbt','tax_local','hold_years',
+  'interest_pct','redemption_amount',
+  'redeem_status','redeem_date','redeem_received',
+  'income_year','income_amount','wht','note','updated_at','monthly_interest','monthly_rate','other_expense','other_expense_note'
+];
 
-/* sections */
-.sec{padding:14px 18px}
-.lbl{font-size:12px;font-weight:600;color:var(--mut);margin:6px 0 8px;letter-spacing:.02em}
+const PAY_SHEET = 'PAYMENTS';
+const PAY_HEADERS = ['pid','contract_id','date','amount','type','term_months','note','created_at','slip_url'];
 
-/* big stat */
-.big{background:var(--acbg);border-radius:14px;padding:16px;margin-bottom:12px}
-.big .k{font-size:12px;color:var(--actx)}
-.big .v{font-size:26px;font-weight:700;color:var(--actx);letter-spacing:-.01em}
-.big .s{font-size:12px;color:var(--actx)}
-
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
-.stat{background:var(--bg);border-radius:10px;padding:12px}
-.stat .k{font-size:11px;color:var(--mut)}
-.stat .v{font-size:19px;font-weight:600}
-
-/* alerts */
-.al{border-radius:10px;padding:12px;margin-bottom:8px;display:flex;gap:10px;align-items:flex-start}
-.al .ic{font-size:18px;line-height:1;margin-top:2px}
-.al.dg{background:var(--dgbg)} .al.dg *{color:var(--dgtx)}
-.al.wn{background:var(--wnbg)} .al.wn *{color:var(--wntx)}
-.al .t{font-size:13px;font-weight:600}
-.al .d{font-size:12.5px}
-.al.flat{background:transparent;border:.5px solid var(--b)}
-.al.flat *{color:var(--mut)} .al.flat b{color:var(--tx);font-weight:600}
-
-/* filter chips */
-.chips{display:flex;gap:6px;overflow-x:auto;padding:10px 18px 4px;scrollbar-width:none}
-.chips::-webkit-scrollbar{display:none}
-.chip{font-size:12.5px;padding:5px 13px;border-radius:20px;border:.5px solid var(--b2);background:transparent;color:var(--mut);white-space:nowrap}
-.chip.on{background:var(--tx);color:#fff;border-color:var(--tx)}
-
-/* contract card */
-.card{border:.5px solid var(--b);border-radius:13px;padding:13px 14px;margin:0 18px 10px;background:var(--card)}
-.card.tap{cursor:pointer;transition:border-color .12s}
-.card.tap:active{border-color:var(--b2)}
-.card.dgline{border-color:#f3c7c7}
-.card .top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
-.card .nm{font-size:15.5px;font-weight:600}
-.card .ln{font-size:12.5px;color:var(--mut);margin-top:3px}
-.card .ln.dg{color:var(--dgtx)}
-.badge{font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;white-space:nowrap;flex:none}
-.b-ac{background:var(--acbg);color:var(--actx)}
-.b-ok{background:var(--okbg);color:var(--oktx)}
-.b-wn{background:var(--wnbg);color:var(--wntx)}
-.b-dg{background:var(--dgbg);color:var(--dgtx)}
-.b-gy{background:#f1f2f4;color:var(--mut)}
-.dim{opacity:.78}
-
-/* detail */
-.bk{display:flex;align-items:center;gap:10px;padding:14px 18px 12px;background:var(--card);border-bottom:.5px solid var(--b);position:sticky;top:0;z-index:20}
-.bk .x{font-size:22px;color:var(--tx);background:none;border:none;padding:0;width:26px}
-.box{border:.5px solid var(--b);border-radius:11px;padding:12px 13px;margin-bottom:13px}
-.kv{display:flex;justify-content:space-between;gap:14px;font-size:13.5px;padding:3px 0}
-.kv .k{color:var(--mut)} .kv .v{text-align:right;font-weight:500}
-.kv.tot{border-top:.5px solid var(--b);margin-top:5px;padding-top:7px}
-.banner{border-radius:11px;padding:13px;margin-bottom:14px;display:flex;gap:11px}
-.banner .ic{font-size:22px;margin-top:1px}
-.banner.dg{background:var(--dgbg)} .banner.dg *{color:var(--dgtx)}
-.banner.ok{background:var(--okbg)} .banner.ok *{color:var(--oktx)}
-.banner .t{font-size:13.5px;font-weight:600}
-.banner .d{font-size:12.5px;line-height:1.5}
-
-/* buttons */
-.btnrow{display:flex;gap:8px;margin-top:6px}
-.btn{flex:1;padding:11px;font-size:13.5px;border-radius:9px;border:.5px solid var(--b2);background:var(--card);color:var(--tx);font-weight:500}
-.btn.dark{background:var(--tx);color:#fff;border-color:var(--tx)}
-.btn.dg{background:var(--dg);color:#fff;border-color:var(--dg)}
-.btn.ok{background:var(--ok);color:#fff;border-color:var(--ok)}
-.btn.sm{flex:none;padding:8px 14px;font-size:13px}
-.btn:active{transform:scale(.98)}
-
-/* form */
-.fld{margin-bottom:12px}
-.fld label{display:block;font-size:12.5px;color:var(--mut);margin-bottom:4px;font-weight:500}
-.fld input,.fld select,.fld textarea{width:100%;font-family:inherit;font-size:14.5px;padding:9px 11px;border:.5px solid var(--b2);border-radius:9px;background:var(--card);color:var(--tx)}
-.fld input:focus,.fld select:focus,.fld textarea:focus{outline:none;border-color:var(--ac);box-shadow:0 0 0 3px var(--acbg)}
-.fld textarea{resize:vertical;min-height:42px}
-.f2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.preview{background:var(--acbg);border-radius:10px;padding:11px 13px;margin:4px 0 14px}
-.preview .kv .k,.preview .kv .v{color:var(--actx)}
-.hintbtn{font-size:11.5px;color:var(--ac);background:none;border:none;padding:0;text-decoration:underline}
-
-/* bottom nav */
-.nav{position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;display:flex;background:var(--card);border-top:.5px solid var(--b);z-index:30}
-.nav button{flex:1;border:none;background:none;padding:9px 0 11px;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--mut2)}
-.nav button.on{color:var(--ac)}
-.nav .ic{font-size:21px;line-height:1}
-.nav .t{font-size:11px}
-.fab{position:fixed;bottom:86px;right:max(18px,calc(50% - 240px + 18px));width:52px;height:52px;border-radius:50%;background:var(--ac);color:#fff;border:none;font-size:28px;line-height:1;box-shadow:0 4px 14px rgba(37,99,235,.4);z-index:31;display:flex;align-items:center;justify-content:center}
-
-/* misc */
-.empty{text-align:center;color:var(--mut2);padding:50px 20px;font-size:14px}
-.setup{margin:40px 18px;padding:20px;border:1px dashed var(--b2);border-radius:14px;background:var(--card)}
-.setup h3{font-size:16px;margin-bottom:8px}
-.setup p{font-size:13.5px;color:var(--mut);margin-bottom:6px}
-.setup code{background:var(--bg);padding:2px 6px;border-radius:5px;font-size:12.5px;word-break:break-all}
-.spin{text-align:center;padding:60px 0;color:var(--mut)}
-.toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%);background:var(--tx);color:#fff;font-size:13px;padding:9px 18px;border-radius:22px;z-index:50;opacity:0;transition:opacity .2s;max-width:90%}
-.toast.show{opacity:1}
-.mut{color:var(--mut)}
-
-/* payment rows */
-.payrow{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:.5px solid var(--b)}
-.payrow:last-child{border-bottom:none}
-.payrow .pd{font-size:13.5px;font-weight:500}
-.payrow .pt{font-size:12px;color:var(--mut);margin-top:1px}
-.payrow .pa{font-size:14.5px;font-weight:600;color:var(--oktx)}
-.pdel{background:none;border:none;color:var(--mut2);font-size:13px;padding:2px 5px;line-height:1}
-.pdel:active{color:var(--dgtx)}
-
-/* schedule rows */
-.schrow{display:flex;align-items:center;gap:11px;padding:8px 0;border-bottom:.5px solid var(--b)}
-.schrow:last-child{border-bottom:none}
-.schrow.upcoming{opacity:.65}
-.schrow .ico{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex:none;font-weight:600}
-.schrow .ico.paid{background:var(--okbg);color:var(--oktx)}
-.schrow .ico.overdue{background:var(--dgbg);color:var(--dgtx)}
-.schrow .ico.upcoming{background:#eef0f2;color:var(--mut2)}
-.schrow .info{flex:1}
-.schrow .n{font-size:13.5px;font-weight:500}
-.schrow .meta{font-size:12px;color:var(--mut)}
-.schrow .meta.dg{color:var(--dgtx)}
-.schrow .meta.ok{color:var(--oktx)}
-.schrow .amt{font-size:13.5px;font-weight:500}
-.schrow.overdue .amt{color:var(--dgtx)}
-.schmore{font-size:12.5px;color:var(--mut);text-align:center;padding:8px 0}
-.sliplink{font-size:11px;color:var(--ac);text-decoration:none;border:.5px solid var(--ac);padding:2px 9px;border-radius:11px;white-space:nowrap}
-.fld input[type=file]{padding:8px 11px;font-size:13px;background:var(--bg)}
-
-/* modal */
-.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;display:flex;align-items:flex-end;justify-content:center}
-.modal.hidden{display:none}
-.sheet{background:var(--card);width:100%;max-width:480px;border-radius:18px 18px 0 0;padding:18px 18px 24px;max-height:92vh;overflow:auto}
-.mhd{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
-.mhd .mt{font-size:17px;font-weight:600}
-.mhd .x{font-size:20px;background:none;border:none;color:var(--mut);width:28px}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <div id="app" class="app"></div>
-</div>
-<div id="nav" class="nav hidden">
-  <button data-view="dashboard" class="on"><span class="ic">▦</span><span class="t">ภาพรวม</span></button>
-  <button data-view="list"><span class="ic">▤</span><span class="t">สัญญา</span></button>
-  <button data-view="form"><span class="ic">＋</span><span class="t">เพิ่ม</span></button>
-</div>
-<button id="fab" class="fab hidden">＋</button>
-<div id="toast" class="toast"></div>
-<div id="modal" class="modal hidden">
-  <div class="sheet">
-    <div class="mhd"><span class="mt" id="m_title">บันทึกรับเงิน</span><button class="x" onclick="closePay()" aria-label="ปิด">✕</button></div>
-    <div class="fld"><label>วันที่</label><input type="date" id="m_date"></div>
-    <div class="fld"><label id="m_amount_label">จำนวนเงิน (บาท)</label><input id="m_amount" inputmode="numeric" placeholder="เช่น 7500" oninput="updatePayTotal()"></div>
-    <div class="fld" id="m_term_wrap" style="display:none"><label>ต่ออายุสัญญา</label>
-      <select id="m_term">
-        <option value="3">3 เดือน</option>
-        <option value="6">6 เดือน</option>
-        <option value="12" selected>1 ปี</option>
-        <option value="24">2 ปี</option>
-      </select>
-    </div>
-    <div id="m_extra_wrap" style="display:none">
-      <div class="fld"><label>ปิดเงินต้น (บางส่วน) — ลดต้นลดดอก</label><input id="m_principal" inputmode="numeric" placeholder="0" oninput="updatePayTotal()"></div>
-      <div class="f2">
-        <div class="fld"><label>ค่าปรับล่าช้า (บาท)</label><input id="m_penalty" inputmode="numeric" placeholder="0" oninput="updatePayTotal()"></div>
-        <div class="fld"><label>ค่าอื่นๆ (บาท)</label><input id="m_other" inputmode="numeric" placeholder="0" oninput="updatePayTotal()"></div>
-      </div>
-      <div class="fld"><label>ระบุค่าอื่นๆ</label><input id="m_other_label" placeholder="เช่น ค่าทวงถาม, ค่าเอกสาร"></div>
-      <div id="m_total" style="background:var(--acbg);border-radius:9px;padding:9px 12px;font-size:14px;font-weight:500;color:var(--actx);margin-bottom:12px;display:flex;justify-content:space-between"><span>รวมรับทั้งสิ้น</span><span id="m_total_val">฿0</span></div>
-    </div>
-    <div class="fld"><label>แนบสลิปโอนเงิน (ยืนยันการจ่าย)</label>
-      <input type="file" id="m_slip" accept="image/*" onchange="onSlipPick(this)">
-      <div id="m_slip_status" style="font-size:12px;color:var(--mut);margin-top:5px"></div>
-    </div>
-    <div class="fld"><label>หมายเหตุ</label><input id="m_note" placeholder="ไม่บังคับ"></div>
-    <div class="btnrow">
-      <button class="btn" onclick="closePay()">ยกเลิก</button>
-      <button class="btn dark" onclick="savePay()">บันทึก</button>
-    </div>
-  </div>
-</div>
-
-<script>
-/* =====================================================================
- *  ตั้งค่า: วาง URL ของ Web App (ลงท้าย /exec) ที่ได้จากการ Deploy GAS
- * ===================================================================== */
-const API_URL = 'https://script.google.com/macros/s/AKfycbwotRAFf0FMUM46OkmcZvu2s7y9OzAXS1bQcPBAObBTqHgloOFWkRgAJ6vNIcm7J5khPA/exec';
-
-/* ---------- state ---------- */
-let CONTRACTS = [];
-let owner = 'all';            // all | Toppy | Daddy
-let filter = 'all';           // all | overdue | near | redeemed | forfeited
-let view = 'dashboard';
-let selectedId = null;
-let editId = null;
-
-const TH_MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
-
-/* ---------- helpers ---------- */
-function baht(n){ if(n===''||n==null||isNaN(n)) return '—'; return '฿'+Number(n).toLocaleString('en-US'); }
-function thDate(iso){
-  if(!iso) return '—';
-  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); if(!m) return iso;
-  return parseInt(m[3])+' '+TH_MONTHS[parseInt(m[2])-1]+' '+(parseInt(m[1])+543);
-}
-function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function el(id){ return document.getElementById(id); }
-
-const STATUS = {
-  active:   {label:'กำลังดำเนิน', cls:'b-ac'},
-  near:     {label:'ใกล้ครบ',    cls:'b-wn'},
-  overdue:  {label:'ค้างชำระ / ขาด', cls:'b-dg'},
-  redeemed: {label:'ไถ่ถอนแล้ว',  cls:'b-ok'},
-  forfeited:{label:'หลุดขายฝาก',  cls:'b-gy'}
-};
-
-function showToast(msg){
-  const t=el('toast'); t.textContent=msg; t.classList.add('show');
-  clearTimeout(t._tm); t._tm=setTimeout(()=>t.classList.remove('show'),2200);
+/* ---------- เมนูใน Google Sheet ---------- */
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('ขายฝาก')
+    .addItem('ตั้งค่า / รีเฟรชหัวตาราง', 'setup')
+    .addSeparator()
+    .addItem('⚠️ ล้างข้อมูลทั้งหมด', 'clearAllData')
+    .addToUi();
 }
 
-/* ---------- API ---------- */
-async function apiGet(){
-  const res = await fetch(API_URL+'?action=list&t='+Date.now());
-  const data = await res.json();
-  if(!data.ok) throw new Error(data.error||'load failed');
-  return data.contracts;
-}
-async function apiPost(payload){
-  const res = await fetch(API_URL,{method:'POST',body:JSON.stringify(payload)});
-  const data = await res.json();
-  if(!data.ok) throw new Error(data.error||'save failed');
-  return data;
-}
-async function reload(){
-  CONTRACTS = await apiGet();
-  render();
+/* ---------- ติดตั้งครั้งแรก ---------- */
+function setup() {
+  const sh = getSheet_();
+  ensureColumns_(sh, HEADERS.length);
+  // รีเฟรชหัวตารางเสมอ (รองรับคอลัมน์ใหม่ที่เพิ่มภายหลัง)
+  sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+  sh.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold');
+  sh.setFrozenRows(1);
+
+  const ps = getPaySheet_(); // สร้าง/รีเฟรชตาราง PAYMENTS
+  ensureColumns_(ps, PAY_HEADERS.length);
+  ps.getRange(1, 1, 1, PAY_HEADERS.length).setValues([PAY_HEADERS]);
+  ps.getRange(1, 1, 1, PAY_HEADERS.length).setFontWeight('bold');
+
+  // โครงสร้างพร้อมใช้งาน (ไม่เติมข้อมูลตัวอย่างอัตโนมัติ — เพิ่มเองได้เลย)
+  migratePayments_(); // เติมงวดรับเงินให้สัญญาเก่าที่ไถ่แล้วแต่ยังไม่มีบันทึก (ถ้ามี)
+  SpreadsheetApp.getActive().toast('ตั้งค่าเรียบร้อย', 'ขายฝาก', 4);
 }
 
-/* ---------- filtering ---------- */
-function sameOwner(c){ return owner==='all' || String(c.owner||'').trim()===owner; }
-function visibleContracts(){
-  return CONTRACTS.filter(c=>{
-    if(!sameOwner(c)) return false;
-    if(filter==='all') return true;
-    return c.status===filter;
+function ensureColumns_(sh, need) {
+  const have = sh.getMaxColumns();
+  if (have < need) sh.insertColumnsAfter(have, need - have);
+}
+
+/* ---------- ล้างข้อมูลทั้งหมด (เก็บหัวตาราง) ---------- */
+function clearAllData() {
+  const ui = SpreadsheetApp.getUi();
+  const resp = ui.alert('ล้างข้อมูลทั้งหมด',
+    'จะลบสัญญาและประวัติการรับเงินทั้งหมด (เก็บหัวตารางไว้)\nยืนยันหรือไม่?',
+    ui.ButtonSet.YES_NO);
+  if (resp !== ui.Button.YES) return;
+  clearSheetData_(getSheet_());
+  clearSheetData_(getPaySheet_());
+  SpreadsheetApp.getActive().toast('ล้างข้อมูลเรียบร้อย พร้อมกรอกใหม่', 'ขายฝาก', 5);
+}
+
+function clearSheetData_(sh) {
+  const last = sh.getLastRow();
+  if (last > 1) sh.deleteRows(2, last - 1);
+}
+
+/* เติมงวดรับเงินให้สัญญาที่ไถ่ถอนแล้วแต่ยังไม่มีบันทึกงวด (สำหรับข้อมูลเดิม) */
+function migratePayments_() {
+  const payMap = readPaymentsMap_();
+  readAll_().forEach(function (o) {
+    if (o.redeem_status === 'redeemed' && (!payMap[o.id] || payMap[o.id].length === 0)) {
+      const sale = num_(o.sale_amount);
+      const pct = (o.interest_pct === '' || o.interest_pct == null) ? 15 : num_(o.interest_pct);
+      const amt = num_(o.redeem_received) || num_(o.redemption_amount) || Math.round(sale * (1 + pct / 100));
+      addPaymentRow_({ contract_id: o.id, date: iso_(o.redeem_date) || isoToday_(), amount: amt, type: 'ไถ่ถอน', note: 'ปิดสัญญา (รับสินไถ่)' });
+    }
   });
 }
-function ownedContracts(){
-  return CONTRACTS.filter(sameOwner);
-}
-function ownerKeys(){
-  const seen=[]; const map={};
-  CONTRACTS.forEach(c=>{ const o=String(c.owner||'').trim(); if(o&&!map[o]){ map[o]=1; seen.push(o); } });
-  return seen;
-}
 
-/* ============================ RENDER ============================ */
-function render(){
-  el('nav').classList.toggle('hidden', view==='detail'||view==='form');
-  el('fab').classList.toggle('hidden', view!=='dashboard'&&view!=='list');
-  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on', b.dataset.view===view));
-  if(view==='dashboard') return renderDashboard();
-  if(view==='list')      return renderList();
-  if(view==='detail')    return renderDetail();
-  if(view==='form')      return renderForm();
-}
-
-function ownerToggleHTML(){
-  const mk=(v,l)=>`<button class="${owner===v?'on':''}" onclick="setOwner('${String(v).replace(/'/g,"\\'")}')">${esc(l)}</button>`;
-  let html = mk('all','รวม');
-  ownerKeys().forEach(o=> html += mk(o,o));
-  return `<div class="owner">${html}</div>`;
-}
-function setOwner(v){ owner=v; render(); }
-function go(v,id){ view=v; if(id!==undefined) selectedId=id; window.scrollTo(0,0); render(); }
-
-/* ---------- DASHBOARD ---------- */
-function renderDashboard(){
-  const list = ownedContracts();
-  const open = list.filter(c=>c.status!=='redeemed'&&c.status!=='forfeited');
-  const principal = open.reduce((s,c)=>s+(+c.sale_amount||0),0);
-  const realized = list.reduce((s,c)=>s+(+c.realized_profit||0),0);
-
-  const ym = new Date().toISOString().slice(0,7);
-  let monthIn = 0;
-  list.forEach(c=>(c.payments||[]).forEach(p=>{ if(String(p.date).slice(0,7)===ym) monthIn += (+p.amount||0); }));
-
-  const overdue = list.filter(c=>c.status==='overdue');
-  const review = list.filter(c=>c.needsReview);
-  const near = list.filter(c=>c.status==='near').sort((a,b)=>a.daysToDeadline-b.daysToDeadline);
-  const dueLate = list.filter(c=>c.sched_overdue>0);
-  const forfeited = list.filter(c=>c.status==='forfeited');
-  const forfVal = forfeited.reduce((s,c)=>s+(+c.income_amount||+c.sale_amount||0),0);
-
-  let alerts='';
-  if(overdue.length){
-    const rows = overdue.slice(0,3).map(c=>`<div class="d">${esc(c.seller_name)}${c.daysOverdue!=null?(' · เลยกำหนด '+c.daysOverdue+' วัน'):''}</div>`).join('');
-    alerts += `<div class="al dg"><span class="ic">⛔</span><div><div class="t">ค้างชำระ / ขาด (${overdue.length})</div>${rows}<div class="d" style="margin-top:3px">ทำเครื่องหมายไว้ · ห้ามต่อสัญญา</div></div></div>`;
+/* ---------- API: GET ---------- */
+function doGet(e) {
+  const action = (e && e.parameter && e.parameter.action) || 'list';
+  try {
+    if (action === 'ping') return json_({ ok: true, time: new Date() });
+    if (action === 'list') return json_({ ok: true, contracts: listContracts_() });
+    return json_({ ok: false, error: 'unknown action' });
+  } catch (err) {
+    return json_({ ok: false, error: String(err) });
   }
-  if(review.length){
-    const rows = review.slice(0,4).map(c=>`<div class="d">${esc(c.seller_name)} · เลยกำหนด ${c.daysOverdue} วัน</div>`).join('');
-    alerts += `<div class="al wn"><span class="ic">⏰</span><div><div class="t">เลยกำหนดไถ่ — โปรดตรวจสอบ (${review.length})</div>${rows}<div class="d" style="margin-top:3px">เปิดสัญญาแล้วกดอัปเดตสถานะเอง</div></div></div>`;
-  }
-  if(dueLate.length){
-    const totalDue = dueLate.reduce((s,c)=>s+(+c.sched_overdue_amount||0),0);
-    const rows = dueLate.slice(0,4).map(c=>`<div class="d">${esc(c.seller_name)} · ค้าง ${c.sched_overdue} งวด · ${baht(c.sched_overdue_amount)}</div>`).join('');
-    alerts += `<div class="al wn"><span class="ic">💰</span><div><div class="t">ค้างชำระงวด (${dueLate.length} ราย · รวม ${baht(totalDue)})</div>${rows}</div></div>`;
-  }
-  if(near.length){
-    const rows = near.slice(0,3).map(c=>`<div class="d">${esc(c.seller_name)} · ครบ ${thDate(c.deadline)} (เหลือ ${c.daysToDeadline} วัน)</div>`).join('');
-    alerts += `<div class="al wn"><span class="ic">📅</span><div><div class="t">ใกล้ครบกำหนดไถ่ (${near.length})</div>${rows}</div></div>`;
-  }
-  if(forfeited.length){
-    alerts += `<div class="al flat"><span class="ic mut">📍</span><div class="d">ที่ดินถือครองจากการหลุดขายฝาก · <b>${forfeited.length} สัญญา</b> มูลค่า ${baht(forfVal)}</div></div>`;
-  }
-  if(!alerts) alerts = `<div class="empty" style="padding:20px">ไม่มีรายการต้องดำเนินการ</div>`;
-
-  el('app').innerHTML = `
-    <div class="hd">
-      <div class="sub">ทะเบียนขายฝากที่ดิน</div>
-      <div class="ttl">ภาพรวมพอร์ต</div>
-      ${ownerToggleHTML()}
-    </div>
-    <div class="sec">
-      <div class="big">
-        <div class="k">เงินต้นที่ปล่อยอยู่</div>
-        <div class="v">${baht(principal)}</div>
-        <div class="s">${open.length} สัญญากำลังดำเนิน</div>
-      </div>
-      <div class="grid2">
-        <div class="stat"><div class="k">กำไรรับจริง (สะสม)</div><div class="v" style="color:var(--oktx)">${baht(realized)}</div></div>
-        <div class="stat"><div class="k">รับเงินเดือนนี้</div><div class="v">${baht(monthIn)}</div></div>
-      </div>
-      <div class="lbl">แจ้งเตือน</div>
-      ${alerts}
-    </div>`;
 }
 
-/* ---------- LIST ---------- */
-function renderList(){
-  const chips = [['all','ทั้งหมด'],['overdue','ค้างชำระ'],['near','ใกล้ครบ'],['redeemed','ไถ่แล้ว'],['forfeited','หลุด']];
-  const list = visibleContracts().sort(orderForList);
-  el('app').innerHTML = `
-    <div class="hd">
-      <div class="hd-row"><div class="ttl">รายการสัญญา</div></div>
-      ${ownerToggleHTML()}
-    </div>
-    <div class="chips">
-      ${chips.map(([v,l])=>`<button class="chip ${filter===v?'on':''}" onclick="setFilter('${v}')">${l}</button>`).join('')}
-    </div>
-    <div class="sec" style="padding-top:8px">
-      ${list.length? list.map(cardHTML).join('') : '<div class="empty">ไม่มีสัญญาในกลุ่มนี้</div>'}
-    </div>`;
-}
-function setFilter(v){ filter=v; render(); }
-function orderForList(a,b){
-  const rank={overdue:0,near:1,active:2,redeemed:3,forfeited:4};
-  return (rank[a.status]-rank[b.status]);
-}
-function cardHTML(c){
-  const st = STATUS[c.status]||STATUS.active;
-  const closed = c.status==='redeemed'||c.status==='forfeited';
-  let ln2='';
-  if(c.status==='overdue') ln2=`<div class="ln dg">ค้างชำระ / ขาด${c.daysOverdue!=null?(' · เลยกำหนด '+c.daysOverdue+' วัน'):''}</div>`;
-  else if(c.status==='redeemed') ln2=`<div class="ln">รับสินไถ่ ${thDate(c.redeem_date)} · ${baht(c.redeem_received||c.redemption_amount)}</div>`;
-  else if(c.status==='forfeited') ln2=`<div class="ln">ได้กรรมสิทธิ์เด็ดขาด · ${baht(c.income_amount||c.sale_amount)}</div>`;
-  else if(c.needsReview) ln2=`<div class="ln" style="color:var(--wntx)">เลยกำหนดไถ่ ${c.daysOverdue} วัน — โปรดตรวจสอบ</div>`;
-  else if(c.sched_overdue>0) ln2=`<div class="ln dg">ค้างชำระ ${c.sched_overdue} งวด · ${baht(c.sched_overdue_amount)} · ครบไถ่ ${thDate(c.deadline)}</div>`;
-  else ln2=`<div class="ln">สินไถ่ ${baht(c.redemption_amount)} · ครบ ${thDate(c.deadline)}</div>`;
-  const deeds = c.deed_count>1?(' · '+c.deed_count+' แปลง'):'';
-  return `<div class="card tap ${(c.status==='overdue'||c.needsReview)?'dgline':''} ${closed?'dim':''}" onclick="go('detail','${c.id}')">
-    <div class="top">
-      <div class="nm">${esc(c.seller_name||'(ไม่ระบุชื่อ)')}</div>
-      <span class="badge ${st.cls}">${st.label}</span>
-    </div>
-    <div class="ln">${esc(c.location)} · เงินต้น ${baht(c.sale_amount)}${deeds} · ${esc(c.owner)}</div>
-    ${ln2}
-  </div>`;
-}
-
-/* ---------- DETAIL ---------- */
-function renderDetail(){
-  const c = CONTRACTS.find(x=>String(x.id)===String(selectedId));
-  if(!c){ go('list'); return; }
-  const st = STATUS[c.status]||STATUS.active;
-
-  let banner='';
-  if(c.status==='overdue'){
-    banner = `<div class="banner dg"><span class="ic">⛔</span><div>
-      <div class="t">ค้างชำระ / ขาด${c.daysOverdue!=null?(' · เลยกำหนดไถ่ '+c.daysOverdue+' วัน'):''}</div>
-      <div class="d">${c.pastGrace?'เลยสิทธิไถ่ (+6 เดือน) แล้ว — ':''}ทำเครื่องหมายไว้เอง · ห้ามต่อสัญญา เตรียมดำเนินการต่อ</div>
-    </div></div>`;
-  } else if(c.needsReview){
-    banner = `<div class="banner" style="background:var(--wnbg)"><span class="ic" style="color:var(--wntx)">⏰</span><div>
-      <div class="t" style="color:var(--wntx)">เลยกำหนดไถ่แล้ว ${c.daysOverdue} วัน</div>
-      <div class="d" style="color:var(--wntx)">โปรดตรวจสอบ แล้วกดอัปเดตสถานะเอง (ต่อสัญญา / รับสินไถ่ / ทำเครื่องหมายหลุด หรือ ค้างชำระ)</div>
-    </div></div>`;
-  } else if(c.status==='redeemed'){
-    banner = `<div class="banner ok"><span class="ic">✓</span><div>
-      <div class="t">ไถ่ถอนแล้ว</div>
-      <div class="d">รับสินไถ่ ${thDate(c.redeem_date)} · รับรวม ${baht(c.paid_total||c.redeem_received)} · กำไรรับจริง ${baht(c.realized_profit||0)}</div></div></div>`;
-  } else if(c.status==='forfeited'){
-    banner = `<div class="banner ok"><span class="ic">▣</span><div>
-      <div class="t">ได้กรรมสิทธิ์เด็ดขาด</div>
-      <div class="d">ที่ดินตกเป็นกรรมสิทธิ์ · เงินได้ ${baht(c.income_amount||c.sale_amount)}</div></div></div>`;
+/* ---------- API: POST ---------- */
+function doPost(e) {
+  let body = {};
+  try { body = JSON.parse(e.postData.contents); }
+  catch (err) { return json_({ ok: false, error: 'อ่านข้อมูลที่ส่งมาไม่ได้' }); }
+  const action = body.action;
+  try {
+    if (action === 'save')        return json_({ ok: true, contract: saveContract_(body.contract) });
+    if (action === 'delete')      return json_({ ok: true, deleted: deleteContract_(body.id) });
+    if (action === 'redeem')      return json_({ ok: true, contract: setRedeem_(body.id, 'redeemed', body) });
+    if (action === 'forfeit')     return json_({ ok: true, contract: setRedeem_(body.id, 'forfeited', body) });
+    if (action === 'setStatus')   return json_({ ok: true, contract: setStatusFlag_(body.id, body.value) });
+    if (action === 'addPayment')  return json_({ ok: true, contract: addPayment_(body) });
+    if (action === 'addPaymentMulti') return json_({ ok: true, contract: addPaymentMulti_(body) });
+    if (action === 'renew')       return json_({ ok: true, contract: renewContract_(body) });
+    if (action === 'deletePayment') return json_({ ok: true, contract: deletePayment_(body.pid, body.contract_id) });
+    return json_({ ok: false, error: 'unknown action' });
+  } catch (err) {
+    return json_({ ok: false, error: String(err) });
   }
-
-  const incomePays = (c.payments||[]).filter(p=>p.type!=='เพิ่มต้น'&&p.type!=='ปิดต้น');
-  const princPays = (c.payments||[]).filter(p=>p.type==='เพิ่มต้น'||p.type==='ปิดต้น');
-  const payRows = incomePays.slice().reverse().map(p=>`
-    <div class="payrow">
-      <div><div class="pd">${thDate(p.date)}</div><div class="pt">${esc(p.type||'-')}${p.term_months?(' · +'+p.term_months+' ด.'):''}${p.note&&p.type!=='ไถ่ถอน'?(' · '+esc(p.note)):''}</div></div>
-      <div style="display:flex;align-items:center;gap:8px">
-        ${p.slip_url?`<a href="${esc(p.slip_url)}" target="_blank" rel="noopener" class="sliplink">สลิป</a>`:'<span style="font-size:11px;color:var(--mut2)">ไม่มีสลิป</span>'}
-        <div class="pa">${baht(p.amount)}</div>
-        <button class="pdel" onclick="delPayment('${p.pid}','${c.id}')" aria-label="ลบ">✕</button>
-      </div>
-    </div>`).join('');
-  const princRows = princPays.slice().reverse().map(p=>{
-    const isAdd=p.type==='เพิ่มต้น';
-    return `<div class="payrow">
-      <div><div class="pd">${thDate(p.date)}</div><div class="pt">${isAdd?'เพิ่มเงินต้น (จ่ายเพิ่ม)':'ปิดต้น (รับคืน)'}${p.note?(' · '+esc(p.note)):''}</div></div>
-      <div style="display:flex;align-items:center;gap:8px">
-        ${p.slip_url?`<a href="${esc(p.slip_url)}" target="_blank" rel="noopener" class="sliplink">สลิป</a>`:''}
-        <div class="pa" style="color:${isAdd?'var(--actx)':'var(--oktx)'}">${isAdd?'+':'−'} ${baht(p.amount)}</div>
-        <button class="pdel" onclick="delPayment('${p.pid}','${c.id}')" aria-label="ลบ">✕</button>
-      </div>
-    </div>`;
-  }).join('');
-  const paymentsSection = `
-    <div class="lbl">ประวัติการรับเงิน${incomePays.length?(' ('+incomePays.length+' รายการ)'):''}</div>
-    <div class="box" style="padding:4px 13px">
-      ${payRows || '<div class="mut" style="font-size:13px;padding:8px 0">ยังไม่มีการรับเงิน</div>'}
-    </div>
-    ${princPays.length?`
-    <div class="lbl">ประวัติเงินต้น (เพิ่ม / ปิด)</div>
-    <div class="box" style="padding:4px 13px">${princRows}</div>`:''}`;
-
-  // ----- ตารางงวด -----
-  let scheduleSection='';
-  const sch = c.schedule||[];
-  if(sch.length){
-    let upShown=0;
-    const rows=[];
-    sch.forEach(g=>{
-      if(g.status==='upcoming'){ upShown++; if(upShown>2) return; }
-      const icon = g.status==='paid'?'✓':g.status==='overdue'?'!':'•';
-      const meta = g.status==='paid'?('จ่ายแล้ว '+thDate(g.paidDate)):g.status==='overdue'?'ค้างชำระ':'ยังไม่ถึงกำหนด';
-      const mcls = g.status==='paid'?'ok':g.status==='overdue'?'dg':'';
-      rows.push(`<div class="schrow ${g.status}">
-        <div class="ico ${g.status}">${icon}</div>
-        <div class="info"><div class="n">งวด ${g.n} · ครบ ${thDate(g.due)}</div><div class="meta ${mcls}">${meta}</div></div>
-        <div class="amt">${baht(g.amount)}</div>
-      </div>`);
-    });
-    const moreUp = c.sched_upcoming - Math.min(2,c.sched_upcoming);
-    if(moreUp>0) rows.push(`<div class="schmore">+ อีก ${moreUp} งวดข้างหน้า (งวดละ ${baht(c.sched_per)})</div>`);
-    const overdueLine = c.sched_overdue? `<div style="font-size:12.5px;color:var(--dgtx);margin:-2px 0 8px">ค้างชำระ ${c.sched_overdue} งวด · รวม ${baht(c.sched_overdue_amount)}</div>`:'';
-    scheduleSection = `
-      <div class="lbl" style="display:flex;justify-content:space-between;align-items:baseline">
-        <span>ตารางงวด · ดอกเบี้ย/เดือน</span>
-        <span style="font-weight:400;color:var(--mut);font-size:12px">จ่ายแล้ว ${c.sched_paid}/${c.sched_total} งวด</span>
-      </div>
-      ${overdueLine}
-      ${c.sched_paid < c.sched_total ? `<button class="btn dark" style="width:100%;margin-bottom:10px" onclick="payNext('${c.id}')">＋ รับชำระงวดถัดไป · ${baht(c.sched_per)}</button>`:''}
-      <div class="box" style="padding:4px 13px">${rows.join('')}</div>`;
-  }
-
-  const fees = (c.fee_personal||c.fee_juristic||c.tax_sbt||c.tax_local||c.wht||c.other_expense) ? `
-    <div class="lbl">ค่าธรรมเนียม ภาษี & ค่าใช้จ่าย</div>
-    <div class="box">
-      ${c.fee_personal?kv('ค่าธรรมเนียม (บุคคล)',baht(c.fee_personal)):''}
-      ${c.fee_juristic?kv('ค่าธรรมเนียม (นิติบุคคล)',baht(c.fee_juristic)):''}
-      ${c.tax_sbt?kv('ภาษีธุรกิจเฉพาะ',baht(c.tax_sbt)):''}
-      ${c.tax_local?kv('ภาษีท้องถิ่น',baht(c.tax_local)):''}
-      ${c.wht?kv('หัก ณ ที่จ่าย',baht(c.wht)):''}
-      ${c.other_expense?kv('ค่าใช้จ่ายอื่นๆ'+(c.other_expense_note?(' · '+esc(c.other_expense_note)):''),baht(c.other_expense)):''}
-    </div>` : '';
-
-  let actions='';
-  if(c.status==='redeemed'||c.status==='forfeited'){
-    actions = `
-      <div class="btnrow">
-        <button class="btn" onclick="doStatus('${c.id}','')">↩ คืนสถานะปกติ (เปิดสัญญาใหม่)</button>
-      </div>`;
-  } else {
-    actions = `
-      <div class="btnrow">
-        <button class="btn" onclick="openPay('${c.id}','pay')">บันทึกรับเงิน</button>
-        <button class="btn dark" onclick="openPay('${c.id}','renew')">ต่อสัญญา</button>
-      </div>
-      <div class="btnrow" style="margin-top:8px">
-        <button class="btn" onclick="openPay('${c.id}','addprin')">＋ เพิ่มเงินต้น</button>
-        <button class="btn ok" onclick="openPay('${c.id}','redeem')">รับสินไถ่ (ปิด)</button>
-      </div>
-      <div class="btnrow" style="margin-top:8px">
-        ${c.status==='overdue'
-          ? `<button class="btn" onclick="doStatus('${c.id}','')">↩ ยกเลิกค้างชำระ</button>`
-          : `<button class="btn dg" onclick="doStatus('${c.id}','overdue')">ทำเครื่องหมายค้าง</button>`}
-        <button class="btn" onclick="doForfeit('${c.id}')">ทำเครื่องหมายหลุด</button>
-      </div>`;
-  }
-
-  el('app').innerHTML = `
-    <div class="bk">
-      <button class="x" onclick="go('list')">‹</button>
-      <div><div style="font-size:16.5px;font-weight:600">${esc(c.seller_name||'(ไม่ระบุชื่อ)')}</div>
-      <div style="font-size:12px;color:var(--mut)">${st.label} · ${esc(c.owner)}</div></div>
-    </div>
-    <div class="sec">
-      ${banner}
-      <div class="lbl">ผู้ขายฝาก</div>
-      <div class="box" style="font-size:13.5px;line-height:1.6">
-        ${c.seller_id?('บัตร ปชช. '+esc(maskId(c.seller_id))+'<br>'):''}${esc(c.location||'—')}
-      </div>
-
-      <div class="lbl">ที่ดิน (หลักประกัน)</div>
-      <div class="box">
-        ${kv('ประเภทนิติกรรม',esc(c.nitikam))}
-        ${kv('ชนิดเอกสาร',esc(c.deed_type||'—'))}
-        ${kv('โฉนด'+(c.deed_count>1?(' ('+c.deed_count+' แปลง)'):''), esc(c.deed_no||'—'))}
-        ${c.appraised?kv('ราคาประเมิน',baht(c.appraised)):''}
-      </div>
-
-      <div class="lbl">เงื่อนไขการเงิน</div>
-      <div class="box">
-        ${kv('เงินต้น (ขาย)',baht(c.sale_amount))}
-        ${c.principal_added>0?kv('เพิ่มเงินต้น','+ '+baht(c.principal_added)):''}
-        ${c.principal_paid>0?kv('ปิดต้นแล้ว','− '+baht(c.principal_paid)):''}
-        ${(c.principal_paid>0||c.principal_added>0||c.is_reducing)?kv('เงินต้นคงเหลือ','<span style="font-weight:500">'+baht(c.outstanding)+'</span>'):''}
-        ${kv('ดอกเบี้ย', c.is_reducing?(c.monthly_rate+'% ต่อเดือน · ลดต้นลดดอก'):(c.interest_pct+'% (ทั้งสัญญา)'))}
-        ${kv('ดอกเบี้ย/เดือน (ปัจจุบัน)',baht(c.current_monthly||c.sched_per||0))}
-        ${kv(c.is_reducing?'ปิดสัญญา = เงินต้นคงเหลือ':'สินไถ่ (เป้าหมาย)',baht(c.redemption_amount))}
-        ${kv('รับมาแล้ว',baht(c.paid_total||0))}
-        ${kv('กำไรรับจริง','<span style="color:var(--oktx);font-weight:500">'+baht(c.realized_profit||0)+'</span>')}
-        ${kv('วันทำสัญญา',thDate(c.contract_date))}
-        ${kv('ครบกำหนดไถ่',thDate(c.deadline))}
-        <div class="kv tot"><span class="k">สิ้นสุดสิทธิไถ่ (+6 ด.)</span><span class="v" style="color:${c.status==='overdue'?'var(--dgtx)':'inherit'}">${thDate(c.grace_deadline)}</span></div>
-      </div>
-
-      ${scheduleSection}
-      ${paymentsSection}
-
-      ${fees}
-      ${c.note?('<div class="lbl">หมายเหตุ</div><div class="box" style="font-size:13.5px;color:var(--mut)">'+esc(c.note)+'</div>'):''}
-
-      ${actions}
-      <div class="btnrow" style="margin-top:8px">
-        <button class="btn" onclick="editContract('${c.id}')">แก้ไข</button>
-        <button class="btn" onclick="doDelete('${c.id}')" style="color:var(--dgtx)">ลบ</button>
-      </div>
-    </div>`;
 }
-function kv(k,v){ return `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`; }
-function maskId(id){ id=String(id); if(id.length<5) return id; return id.slice(0,4)+' ••••• •• '+id.slice(-3); }
 
-/* ---------- ACTIONS ---------- */
-let payCtx=null, slipData=null;
-function fileToResizedDataURL(file, maxDim, quality){
-  maxDim=maxDim||1280; quality=quality||0.7;
-  return new Promise((resolve,reject)=>{
-    const reader=new FileReader();
-    reader.onload=e=>{ const img=new Image();
-      img.onload=()=>{ let w=img.width,h=img.height;
-        if(w>h && w>maxDim){ h=Math.round(h*maxDim/w); w=maxDim; }
-        else if(h>maxDim){ w=Math.round(w*maxDim/h); h=maxDim; }
-        const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
-        cv.getContext('2d').drawImage(img,0,0,w,h);
-        resolve(cv.toDataURL('image/jpeg',quality)); };
-      img.onerror=reject; img.src=e.target.result; };
-    reader.onerror=reject; reader.readAsDataURL(file);
+/* ================= CORE ================= */
+
+function getSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(SHEET_NAME);
+    sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+    sh.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function readAll_() {
+  const sh = getSheet_();
+  const last = sh.getLastRow();
+  if (last < 2) return [];
+  const values = sh.getRange(2, 1, last - 1, HEADERS.length).getValues();
+  return values.map(function (row, i) {
+    const o = {};
+    HEADERS.forEach(function (h, c) { o[h] = row[c]; });
+    o._row = i + 2;
+    return o;
+  }).filter(function (o) { return String(o.id).trim() !== ''; });
+}
+
+function listContracts_() {
+  const payMap = readPaymentsMap_();
+  return readAll_().map(function (o) { return enrich_(o, payMap[o.id] || []); });
+}
+
+/* เติมฟิลด์คำนวณ: สถานะ, จำนวนวัน, กำไรรับจริง, ประวัติรับเงิน ฯลฯ */
+function enrich_(o, payments) {
+  payments = payments || [];
+  const today = startOfDay_(new Date());
+  const deadline = toDate_(o.deadline);
+  const grace = toDate_(o.grace_deadline);
+  const sale = num_(o.sale_amount);
+  const pct = (o.interest_pct === '' || o.interest_pct == null) ? 15 : num_(o.interest_pct);
+
+  // ปิด/เพิ่มเงินต้นระหว่างสัญญา (ลดต้นลดดอก)
+  let principalPaid = 0, principalAdded = 0;
+  payments.forEach(function (p) {
+    if (p.type === 'ปิดต้น') principalPaid += num_(p.amount);
+    else if (p.type === 'เพิ่มต้น') principalAdded += num_(p.amount);
   });
-}
-async function onSlipPick(input){
-  const f=input.files&&input.files[0];
-  if(!f){ slipData=null; el('m_slip_status').textContent=''; return; }
-  el('m_slip_status').textContent='กำลังเตรียมรูป…'; el('m_slip_status').style.color='var(--mut)';
-  try{ slipData=await fileToResizedDataURL(f); el('m_slip_status').textContent='✓ แนบสลิปแล้ว'; el('m_slip_status').style.color='var(--oktx)'; }
-  catch(e){ slipData=null; el('m_slip_status').textContent='อ่านรูปไม่สำเร็จ ลองใหม่'; el('m_slip_status').style.color='var(--dgtx)'; }
-}
-function openPay(id, mode, prefill){
-  payCtx={id,mode}; slipData=null;
-  const c = CONTRACTS.find(x=>String(x.id)===String(id));
-  const titles={renew:'ต่อสัญญา',pay:'รับชำระงวด',redeem:'รับสินไถ่ (ปิดสัญญา)',addprin:'เพิ่มเงินต้น (จ่ายเพิ่มให้ลูกค้า)'};
-  el('m_title').textContent=titles[mode]||'บันทึกรับเงิน';
-  el('m_date').value=new Date().toISOString().slice(0,10);
-  el('m_note').value=''; el('m_slip').value=''; el('m_slip_status').textContent='';
-  el('m_penalty').value=''; el('m_other').value=''; el('m_other_label').value=''; el('m_principal').value='';
-  el('m_term_wrap').style.display = mode==='renew'?'block':'none';
-  el('m_extra_wrap').style.display = mode==='pay'?'block':'none';
-  if(mode==='renew'){ el('m_amount_label').textContent='ค่าต่อสัญญา / ดอกเบี้ย (บาท)'; el('m_amount').value=''; el('m_term').value='12'; }
-  else if(mode==='redeem'){ el('m_amount_label').textContent='ยอดสินไถ่ที่รับจริง (บาท)'; el('m_amount').value=c?c.redemption_amount:''; }
-  else if(mode==='addprin'){ el('m_amount_label').textContent='เงินต้นที่จ่ายเพิ่ม (บาท)'; el('m_amount').value=''; }
-  else { el('m_amount_label').textContent='ดอกเบี้ยงวดนี้ (บาท)'; el('m_amount').value=''; }
-  if(prefill){
-    if(prefill.amount!=null) el('m_amount').value=prefill.amount;
-    if(prefill.note!=null) el('m_note').value=prefill.note;
+  const principalDisbursed = sale + principalAdded;               // เงินต้นที่ปล่อยไปทั้งหมด
+  const outstanding = Math.max(0, principalDisbursed - principalPaid);
+  const rate = num_(o.monthly_rate);       // %/เดือน (ถ้า > 0 = โหมดลดต้นลดดอก)
+  const reducing = rate > 0;
+  const term0 = num_(o.term_months) || 12;
+  const currentMonthly = reducing
+    ? Math.round(outstanding * rate / 100)
+    : (num_(o.monthly_interest) || Math.round(sale * pct / 100 / term0));
+  // สินไถ่: โหมดลดต้น = เงินต้นคงเหลือ; โหมดคงที่ = เดิม
+  const redemption = reducing
+    ? outstanding
+    : (o.redemption_amount ? num_(o.redemption_amount) : Math.round(sale * (1 + pct / 100)));
+
+  let status = 'active';                 // active | near | overdue(manual) | redeemed | forfeited
+  let daysToDeadline = null, daysOverdue = null, pastGrace = false;
+
+  // สถานะปิด/ค้าง = ผู้ใช้กดเองทั้งหมด (redeemed / forfeited / overdue)
+  if (o.redeem_status === 'redeemed') {
+    status = 'redeemed';
+  } else if (o.redeem_status === 'forfeited') {
+    status = 'forfeited';
+  } else if (o.redeem_status === 'overdue') {
+    status = 'overdue';
+    if (deadline) {
+      const d = Math.round((deadline - today) / 86400000);
+      if (d < 0) { daysOverdue = -d; if (grace && today > grace) pastGrace = true; }
+    }
+  } else if (deadline) {
+    // ยังไม่ปิด: คำนวณ "ใกล้ครบ" ไว้แจ้งเตือน แต่ไม่เปลี่ยนเป็นเกินกำหนดอัตโนมัติ
+    const d = Math.round((deadline - today) / 86400000);
+    if (d < 0) {
+      daysOverdue = -d;                  // เลยกำหนดแล้ว — แจ้งเตือนให้ไปกดเอง (สถานะยังเป็น active)
+      if (grace && today > grace) pastGrace = true;
+      status = 'active';
+    } else {
+      daysToDeadline = d;
+      status = (d <= NEAR_DAYS) ? 'near' : 'active';
+    }
   }
-  updatePayTotal();
-  el('modal').classList.remove('hidden');
-  setTimeout(()=>el('m_amount').focus(),60);
-}
-function updatePayTotal(){
-  const t = numFromInput('m_amount')+numFromInput('m_penalty')+numFromInput('m_other')+numFromInput('m_principal');
-  const e=el('m_total_val'); if(e) e.textContent=baht(t);
-}
-/* จ่ายงวดถัดไปที่ยังไม่จ่าย — เติมยอด+หมายเหตุให้อัตโนมัติ */
-function payNext(id){
-  const c=CONTRACTS.find(x=>String(x.id)===String(id));
-  if(!c||!c.schedule||!c.schedule.length) return openPay(id,'pay');
-  const next=c.schedule.find(g=>g.status!=='paid');
-  if(!next){ showToast('จ่ายครบทุกงวดแล้ว'); return; }
-  openPay(id,'pay',{amount:next.amount, note:'ชำระงวดที่ '+next.n+' (ครบ '+thDate(next.due)+')'});
-}
-function closePay(){ el('modal').classList.add('hidden'); payCtx=null; slipData=null; }
-async function savePay(){
-  if(!payCtx) return;
-  const id=payCtx.id, mode=payCtx.mode;
-  const date=el('m_date').value, note=el('m_note').value.trim();
-  if(!date){ alert('เลือกวันที่'); return; }
+  // ต้องตรวจสอบ = เลยกำหนดแล้วแต่ยังไม่ได้กดจัดการ
+  const needsReview = (daysOverdue != null && daysOverdue > 0 && status !== 'overdue');
 
-  let payload;
-  if(mode==='renew'){
-    const amount=numFromInput('m_amount');
-    if(amount<=0){ alert('กรอกค่าต่อสัญญา'); return; }
-    payload={action:'renew',contract_id:id,amount,date,term_months:parseInt(el('m_term').value)||12,note};
-  } else if(mode==='redeem'){
-    const amount=numFromInput('m_amount');
-    if(amount<=0){ alert('กรอกยอดสินไถ่'); return; }
-    payload={action:'redeem',id,redeem_received:amount,redeem_date:date};
-  } else if(mode==='addprin'){
-    const amount=numFromInput('m_amount');
-    if(amount<=0){ alert('กรอกเงินต้นที่จ่ายเพิ่ม'); return; }
-    payload={action:'addPayment',contract_id:id,amount,date,type:'เพิ่มต้น',note};
-  } else {
-    const main=numFromInput('m_amount'), penalty=numFromInput('m_penalty'), other=numFromInput('m_other'), principal=numFromInput('m_principal');
-    const comps=[];
-    if(main>0) comps.push({type:'ดอกเบี้ย',amount:main});
-    if(principal>0) comps.push({type:'ปิดต้น',amount:principal});
-    if(penalty>0) comps.push({type:'ค่าปรับ',amount:penalty});
-    if(other>0) comps.push({type:'ค่าอื่นๆ',amount:other,note:el('m_other_label').value.trim()||'ค่าอื่นๆ'});
-    if(!comps.length){ alert('กรอกจำนวนเงินอย่างน้อย 1 ช่อง'); return; }
-    payload={action:'addPaymentMulti',contract_id:id,date,note,components:comps};
-  }
-  if(!slipData){ if(!confirm('ยังไม่ได้แนบสลิปโอนเงิน — ต้องการบันทึกโดยไม่มีหลักฐานหรือไม่?')) return; }
-  if(slipData){ payload.slip_base64=slipData; payload.slip_name='slip_'+id+'_'+date+'.jpg'; }
-  try{
-    showToast('กำลังบันทึก…');
-    await apiPost(payload);
-    closePay(); await reload(); go('detail',id); showToast('บันทึกแล้ว');
-  }catch(e){ alert('ผิดพลาด: '+e.message); }
-}
-async function delPayment(pid,id){
-  if(!confirm('ลบรายการรับเงินนี้?')) return;
-  try{ showToast('กำลังลบ…'); await apiPost({action:'deletePayment',pid,contract_id:id}); await reload(); go('detail',id); showToast('ลบแล้ว'); }
-  catch(e){ alert('ผิดพลาด: '+e.message); }
-}
-async function doForfeit(id){
-  if(!confirm('ยืนยัน: ทำเครื่องหมายว่าที่ดินหลุดขายฝาก (ได้กรรมสิทธิ์เด็ดขาด)?\n(จะบันทึกเงินได้ = เงินต้น)')) return;
-  const dateStr = prompt('วันที่ได้กรรมสิทธิ์ (ปี-เดือน-วัน)', new Date().toISOString().slice(0,10));
-  if(dateStr===null) return;
-  try{ showToast('กำลังบันทึก…'); await apiPost({action:'forfeit',id,redeem_date:dateStr}); await reload(); go('detail',id); showToast('บันทึกได้กรรมสิทธิ์แล้ว'); }
-  catch(e){ alert('ผิดพลาด: '+e.message); }
-}
-async function doStatus(id, value){
-  const msg = value==='overdue' ? 'ทำเครื่องหมายว่าสัญญานี้ค้างชำระ / ขาด?' : 'คืนสถานะเป็นปกติ (เปิดสัญญาอีกครั้ง)?';
-  if(!confirm(msg)) return;
-  try{ showToast('กำลังบันทึก…'); await apiPost({action:'setStatus',id,value}); await reload(); go('detail',id); showToast('อัปเดตสถานะแล้ว'); }
-  catch(e){ alert('ผิดพลาด: '+e.message); }
-}
-async function doDelete(id){
-  if(!confirm('ลบสัญญานี้ถาวร?')) return;
-  try{ showToast('กำลังลบ…'); await apiPost({action:'delete',id}); await reload(); go('list'); showToast('ลบแล้ว'); }
-  catch(e){ alert('ผิดพลาด: '+e.message); }
-}
+  // กำไรรับจริง = เงินรับเข้าทั้งหมด − เงินต้นที่คืนแล้ว (ปิดต้น + เต็มก้อนเมื่อไถ่)
+  let paidTotal = 0;
+  payments.forEach(function (p) { if (p.type !== 'เพิ่มต้น') paidTotal += num_(p.amount); }); // เพิ่มต้น = จ่ายออก ไม่นับเป็นรับ
+  // สำรอง: ไถ่ถอนแล้วแต่ยังไม่มีบันทึกงวด (ข้อมูลเก่า) ให้ใช้ยอดรับสินไถ่เดิม
+  if (paidTotal === 0 && o.redeem_status === 'redeemed') paidTotal = num_(o.redeem_received) || redemption;
+  const principalReturned = (o.redeem_status === 'redeemed') ? principalDisbursed : principalPaid;
 
-/* ---------- FORM ---------- */
-function editContract(id){ editId=id; go('form'); }
-function renderForm(){
-  const c = editId? CONTRACTS.find(x=>String(x.id)===String(editId)) : null;
-  const v = (k,d)=> c&&c[k]!=null&&c[k]!==''? c[k] : (d!==undefined?d:'');
-  const ownerSel = c?String(c.owner||'').trim():(owner!=='all'?owner:'Toppy');
-  el('app').innerHTML = `
-    <div class="bk">
-      <button class="x" onclick="cancelForm()">‹</button>
-      <div style="font-size:16.5px;font-weight:600">${c?'แก้ไขสัญญา':'เพิ่มสัญญาขายฝาก'}</div>
-    </div>
-    <div class="sec">
-      <div class="f2">
-        <div class="fld"><label>พอร์ต</label>
-          <select id="f_owner">${['Toppy','Daddy'].map(o=>`<option ${ownerSel===o?'selected':''}>${o}</option>`).join('')}</select></div>
-        <div class="fld"><label>ประเภท</label>
-          <select id="f_nitikam">${['ขายฝาก','ขายซื้อคืน'].map(o=>`<option ${v('nitikam','ขายฝาก')===o?'selected':''}>${o}</option>`).join('')}</select></div>
-      </div>
-      <div class="fld"><label>ชื่อ-นามสกุล ผู้ขายฝาก</label><input id="f_seller_name" value="${esc(v('seller_name'))}" placeholder="เช่น นายสมชาย ใจดี"></div>
-      <div class="fld"><label>เลขบัตรประชาชน</label><input id="f_seller_id" value="${esc(v('seller_id'))}" inputmode="numeric" placeholder="เลข 13 หลัก"></div>
+  const sch = computeSchedule_(o, payments, sale, pct, status);
 
-      <div class="f2">
-        <div class="fld"><label>ชนิดเอกสารสิทธิ์</label>
-          <select id="f_deed_type">${['น.ส.4 จ.','น.ส.4 ง.','น.ส.3 ก.','โฉนด','อื่นๆ'].map(o=>`<option ${v('deed_type')===o?'selected':''}>${o}</option>`).join('')}</select></div>
-        <div class="fld"><label>ที่ตั้ง (อำเภอ จังหวัด)</label><input id="f_location" value="${esc(v('location'))}" placeholder="เช่น เมือง ยะลา"></div>
-      </div>
-      <div class="fld"><label>เลขที่โฉนด (หลายแปลงคั่นด้วย ,)</label><textarea id="f_deed_no" placeholder="เช่น 12345  (หลายแปลง: 12345, 12346)">${esc(v('deed_no'))}</textarea></div>
-
-      <div class="f2">
-        <div class="fld"><label>วันทำสัญญา</label><input type="date" id="f_contract_date" value="${esc(v('contract_date'))}"></div>
-        <div class="fld"><label>ระยะเวลา</label>
-          <select id="f_term">${[[3,'3 เดือน'],[6,'6 เดือน'],[12,'1 ปี'],[24,'2 ปี'],[36,'3 ปี']].map(([m,l])=>`<option value="${m}" ${(+v('term_months',12))===m?'selected':''}>${l}</option>`).join('')}</select></div>
-      </div>
-
-      <div class="fld"><label>วิธีคิดดอกเบี้ย</label>
-        <select id="f_intmode" onchange="toggleIntMode()">
-          <option value="flat">คงที่ (บาท/เดือน)</option>
-          <option value="reducing">ลดต้นลดดอก (% ต่อเดือน)</option>
-        </select>
-      </div>
-      <div class="f2">
-        <div class="fld"><label>เงินต้น (ขาย)</label><input id="f_sale" value="${esc(v('sale_amount'))}" inputmode="numeric" placeholder="เช่น 500000"></div>
-        <div class="fld" id="f_pct_wrap"><label>ดอกเบี้ย % (รวมสัญญา)</label><input id="f_pct" value="${esc(v('interest_pct',15))}" inputmode="decimal" placeholder="เช่น 18"></div>
-        <div class="fld" id="f_rate_wrap" style="display:none"><label>อัตรา % ต่อเดือน</label><input id="f_rate" value="${esc(v('monthly_rate'))}" inputmode="decimal" placeholder="เช่น 1.5"></div>
-      </div>
-      <div class="fld" id="f_monthly_wrap"><label>ดอกเบี้ย/เดือน (บาท) — เว้นว่างได้ จะคิดให้อัตโนมัติ</label><input id="f_monthly" value="${esc(v('monthly_interest'))}" inputmode="numeric" placeholder="คิดอัตโนมัติจากดอกเบี้ย%"></div>
-      <div class="f2">
-        <div class="fld"><label>ราคาประเมิน</label><input id="f_appraised" value="${esc(v('appraised'))}" inputmode="numeric" placeholder="ราคาประเมิน (ถ้ามี)"></div>
-        <div class="fld"><label>ถือครอง (ปี)</label><input id="f_hold" value="${esc(v('hold_years'))}" inputmode="numeric" placeholder="ปี (ใช้คิดภาษี)"></div>
-      </div>
-
-      <div class="preview" id="preview"></div>
-
-      <div class="lbl" style="display:flex;justify-content:space-between;align-items:center">
-        <span>ค่าธรรมเนียม & ภาษี</span>
-        <button class="hintbtn" onclick="autoFees()">คำนวณอัตโนมัติ ↻</button>
-      </div>
-      <div class="f2">
-        <div class="fld"><label>ค่าธรรมเนียม (บุคคล)</label><input id="f_fee_personal" value="${esc(v('fee_personal'))}" inputmode="numeric"></div>
-        <div class="fld"><label>ค่าธรรมเนียม (นิติบุคคล)</label><input id="f_fee_juristic" value="${esc(v('fee_juristic'))}" inputmode="numeric"></div>
-      </div>
-      <div class="f2">
-        <div class="fld"><label>ภาษีธุรกิจเฉพาะ</label><input id="f_tax_sbt" value="${esc(v('tax_sbt'))}" inputmode="numeric"></div>
-        <div class="fld"><label>ภาษีท้องถิ่น</label><input id="f_tax_local" value="${esc(v('tax_local'))}" inputmode="numeric"></div>
-      </div>
-      <div class="f2">
-        <div class="fld"><label>ค่าใช้จ่ายอื่นๆ (บาท)</label><input id="f_other_expense" value="${esc(v('other_expense'))}" inputmode="numeric" placeholder="0"></div>
-        <div class="fld"><label>รายละเอียดค่าใช้จ่าย</label><input id="f_other_expense_note" value="${esc(v('other_expense_note'))}" placeholder="เช่น ค่าเดินทาง, ค่ารังวัด"></div>
-      </div>
-      <div class="fld"><label>หมายเหตุ</label><textarea id="f_note">${esc(v('note'))}</textarea></div>
-
-      <div class="btnrow" style="margin-top:4px">
-        <button class="btn" onclick="cancelForm()">ยกเลิก</button>
-        <button class="btn dark" onclick="saveForm()">บันทึก</button>
-      </div>
-    </div>`;
-  ['f_sale','f_pct','f_rate','f_contract_date','f_term','f_monthly'].forEach(id=>{
-    const e=el(id); if(e){ e.addEventListener('input',updatePreview); e.addEventListener('change',updatePreview); }
-  });
-  el('f_intmode').value = (c && numFromInput_c(c,'monthly_rate')>0) ? 'reducing' : 'flat';
-  toggleIntMode();
-}
-function numFromInput_c(c,k){ const n=Number(String(c[k]||'').replace(/,/g,'')); return isNaN(n)?0:n; }
-function toggleIntMode(){
-  const reducing = el('f_intmode').value==='reducing';
-  el('f_pct_wrap').style.display = reducing?'none':'block';
-  el('f_rate_wrap').style.display = reducing?'block':'none';
-  el('f_monthly_wrap').style.display = reducing?'none':'block';
-  updatePreview();
-}
-function numFromInput(id){ const e=el(id); if(!e) return 0; const n=Number(String(e.value).replace(/,/g,'')); return isNaN(n)?0:n; }
-function addMonthsISO(iso,m){
-  const x=String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); if(!x) return '';
-  const d=new Date(+x[1],+x[2]-1,+x[3]); d.setMonth(d.getMonth()+m);
-  return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
-}
-function updatePreview(){
-  const sale=numFromInput('f_sale');
-  const reducing = el('f_intmode') && el('f_intmode').value==='reducing';
-  const cd=el('f_contract_date').value, term=parseInt(el('f_term').value)||12;
-  const deadline=cd?addMonthsISO(cd,term):'';
-  const grace=deadline?addMonthsISO(deadline,6):'';
-  let html='';
-  if(reducing){
-    const rate=numFromInput('f_rate');
-    const monthly=Math.round(sale*rate/100);
-    html = kv('ดอกเบี้ยเดือนแรก','<span style="font-weight:500">'+baht(monthly)+'</span>')+
-           kv('วิธีคิด','ลดต้นลดดอก '+(rate||0)+'%/เดือน')+
-           kv('ปิดสัญญา = เงินต้นคงเหลือ',baht(sale));
-  } else {
-    const pct=numFromInput('f_pct')||15;
-    const redemption=Math.round(sale*(1+pct/100));
-    const monthly = numFromInput('f_monthly') || Math.round((sale*pct/100)/term);
-    html = kv('สินไถ่ (คำนวณ)',baht(redemption))+
-           kv('ดอกเบี้ย/เดือน (งวดละ)','<span style="font-weight:500">'+baht(monthly)+'</span>')+
-           kv('กำไรเต็มสัญญา',baht(redemption-sale));
-  }
-  html += (deadline?kv('ครบกำหนดไถ่',thDate(deadline)):'')+(grace?kv('สิ้นสุดสิทธิไถ่ (+6 ด.)',thDate(grace)):'');
-  el('preview').innerHTML = html;
-}
-function autoFees(){
-  const sale=numFromInput('f_sale'), appraised=numFromInput('f_appraised')||sale, hold=numFromInput('f_hold');
-  const base=Math.max(sale,appraised);
-  el('f_fee_personal').value = Math.round(base*0.02);     // ค่าธรรมเนียมจดทะเบียน 2%
-  if(hold>0 && hold<5){
-    const sbt = Math.round(base*0.03);                    // ภาษีธุรกิจเฉพาะ 3% (ถือครอง <5 ปี)
-    el('f_tax_sbt').value = sbt;
-    el('f_tax_local').value = Math.round(sbt*0.10);       // ภาษีท้องถิ่น = 10% ของ SBT (รวมเป็น 3.3%)
-  } else {
-    el('f_tax_sbt').value=''; el('f_tax_local').value='';
-  }
-  showToast('คำนวณค่าธรรมเนียมให้แล้ว — แก้ไขได้');
-}
-function cancelForm(){ editId=null; view = selectedId? 'detail':'list'; render(); }
-async function saveForm(){
-  const c = {
-    id: (editId && String(editId)!=='undefined') ? editId : '',
-    owner: el('f_owner').value,
-    nitikam: el('f_nitikam').value,
-    seller_name: el('f_seller_name').value.trim(),
-    seller_id: el('f_seller_id').value.trim(),
-    deed_type: el('f_deed_type').value,
-    deed_no: el('f_deed_no').value.trim(),
-    location: el('f_location').value.trim(),
-    contract_date: el('f_contract_date').value,
-    term_months: parseInt(el('f_term').value)||12,
-    sale_amount: numFromInput('f_sale'),
-    interest_pct: numFromInput('f_pct')||15,
-    monthly_rate: (el('f_intmode').value==='reducing') ? (numFromInput('f_rate')||'') : '',
-    monthly_interest: (el('f_intmode').value==='reducing') ? '' : (el('f_monthly').value? numFromInput('f_monthly'):''),
-    appraised: numFromInput('f_appraised')||'',
-    hold_years: el('f_hold').value? numFromInput('f_hold'):'',
-    fee_personal: numFromInput('f_fee_personal')||'',
-    fee_juristic: numFromInput('f_fee_juristic')||'',
-    tax_sbt: numFromInput('f_tax_sbt')||'',
-    tax_local: numFromInput('f_tax_local')||'',
-    other_expense: numFromInput('f_other_expense')||'',
-    other_expense_note: el('f_other_expense_note').value.trim(),
-    note: el('f_note').value.trim()
+  return {
+    id: o.id,
+    owner: o.owner || '',
+    doc_no: o.doc_no || '',
+    nitikam: o.nitikam || 'ขายฝาก',
+    deed_type: o.deed_type || '',
+    deed_no: o.deed_no || '',
+    deed_count: countDeeds_(o.deed_no),
+    location: o.location || '',
+    contract_date: iso_(o.contract_date),
+    term_months: num_(o.term_months) || '',
+    deadline: iso_(o.deadline),
+    grace_deadline: iso_(o.grace_deadline),
+    seller_name: o.seller_name || '',
+    seller_id: o.seller_id || '',
+    sale_amount: sale,
+    appraised: num_(o.appraised) || '',
+    fee_personal: num_(o.fee_personal) || '',
+    fee_juristic: num_(o.fee_juristic) || '',
+    tax_sbt: num_(o.tax_sbt) || '',
+    tax_local: num_(o.tax_local) || '',
+    hold_years: o.hold_years === '' ? '' : num_(o.hold_years),
+    interest_pct: pct,
+    monthly_interest: num_(o.monthly_interest) || '',
+    monthly_rate: rate || '',
+    is_reducing: reducing,
+    principal_paid: principalPaid,
+    principal_added: principalAdded,
+    principal_disbursed: principalDisbursed,
+    outstanding: outstanding,
+    current_monthly: currentMonthly,
+    redemption_amount: redemption,
+    profit: redemption - sale,
+    redeem_status: o.redeem_status || '',
+    redeem_date: iso_(o.redeem_date),
+    redeem_received: num_(o.redeem_received) || '',
+    income_year: o.income_year || '',
+    income_amount: num_(o.income_amount) || '',
+    wht: num_(o.wht) || '',
+    other_expense: num_(o.other_expense) || '',
+    other_expense_note: o.other_expense_note || '',
+    note: o.note || '',
+    status: status,
+    daysToDeadline: daysToDeadline,
+    daysOverdue: daysOverdue,
+    pastGrace: pastGrace,
+    needsReview: needsReview,
+    payments: payments,
+    payment_count: payments.length,
+    paid_total: paidTotal,
+    realized_profit: paidTotal - principalReturned,
+    schedule: sch.schedule,
+    sched_paid: sch.paidCount,
+    sched_overdue: sch.overdueCount,
+    sched_overdue_amount: sch.overdueAmount,
+    sched_upcoming: sch.upcomingCount,
+    sched_per: sch.per,
+    sched_total: sch.totalCount
   };
-  if(!c.seller_name){ alert('กรุณากรอกชื่อผู้ขายฝาก'); return; }
-  if(!c.sale_amount){ alert('กรุณากรอกเงินต้น'); return; }
-  try{
-    showToast('กำลังบันทึก…');
-    const r = await apiPost({action:'save',contract:c});
-    editId=null; await reload();
-    go('detail', r.contract.id);
-    showToast('บันทึกแล้ว');
-  }catch(e){ alert('ผิดพลาด: '+e.message); }
 }
 
-/* ---------- nav ---------- */
-document.querySelectorAll('#nav button').forEach(b=>{
-  b.addEventListener('click',()=>{
-    if(b.dataset.view==='form'){ editId=null; selectedId=null; go('form'); }
-    else go(b.dataset.view);
+/* บันทึก (เพิ่ม/แก้ไข) */
+function saveContract_(c) {
+  const sh = getSheet_();
+  c = c || {};
+
+  // คำนวณวันครบกำหนด + สิทธิไถ่ +6 เดือน อัตโนมัติ ถ้าไม่ได้กรอกมา
+  const dates = computeDates_(c.contract_date, c.term_months, c.deadline, c.grace_deadline);
+  c.deadline = dates.deadline;
+  c.grace_deadline = dates.grace;
+
+  // สินไถ่ = เงินต้น x (1 + ดอก%) — คำนวณใหม่เสมอ กันค่าค้าง
+  const sale = num_(c.sale_amount);
+  const pct = (c.interest_pct === '' || c.interest_pct == null) ? 15 : num_(c.interest_pct);
+  c.interest_pct = pct;
+  c.redemption_amount = Math.round(sale * (1 + pct / 100));
+  c.updated_at = new Date();
+
+  const all = readAll_();
+  let targetRow = null;
+  if (c.id) {
+    const found = all.find(function (o) { return String(o.id) === String(c.id); });
+    if (found) targetRow = found._row;
+  }
+  if (!c.id) c.id = 'C' + Date.now();
+
+  const rowArr = HEADERS.map(function (h) { return (c[h] === undefined || c[h] === null) ? '' : c[h]; });
+
+  if (targetRow) {
+    sh.getRange(targetRow, 1, 1, HEADERS.length).setValues([rowArr]);
+  } else {
+    sh.appendRow(rowArr);
+    targetRow = sh.getLastRow();
+  }
+  return enrichOne_(c.id);
+}
+
+function deleteContract_(id) {
+  const sh = getSheet_();
+  const found = readAll_().find(function (o) { return String(o.id) === String(id); });
+  if (!found) return false;
+  sh.deleteRow(found._row);
+  return true;
+}
+
+/* ตั้งสถานะแบบ manual: 'overdue' (ค้าง) หรือ '' (คืนสถานะปกติ) — ไม่ยุ่งกับเงิน */
+function setStatusFlag_(id, value) {
+  const allowed = { 'overdue': 1, '': 1 };
+  const v = allowed[value] ? value : '';
+  const sh = getSheet_();
+  const found = readAll_().find(function (o) { return String(o.id) === String(id); });
+  if (!found) throw 'ไม่พบสัญญา';
+  const col = {}; HEADERS.forEach(function (h, i) { col[h] = i + 1; });
+  sh.getRange(found._row, col['redeem_status']).setValue(v);
+  // คืนสถานะปกติ: ล้างวันไถ่/เงินได้ที่อาจถูกตั้งไว้ ถ้าเคยปิดสัญญา
+  if (v === '') {
+    sh.getRange(found._row, col['redeem_date']).setValue('');
+  }
+  sh.getRange(found._row, col['updated_at']).setValue(new Date());
+  return enrichOne_(id);
+}
+
+/* ตั้งสถานะปิดสัญญา: รับสินไถ่ หรือ ได้กรรมสิทธิ์ */
+function setRedeem_(id, kind, extra) {
+  const sh = getSheet_();
+  const all = readAll_();
+  const found = all.find(function (o) { return String(o.id) === String(id); });
+  if (!found) throw 'ไม่พบสัญญา';
+  const col = {};
+  HEADERS.forEach(function (h, i) { col[h] = i + 1; });
+
+  sh.getRange(found._row, col['redeem_status']).setValue(kind);
+  sh.getRange(found._row, col['redeem_date']).setValue(extra.redeem_date || new Date());
+  if (kind === 'redeemed') {
+    const amt = extra.redeem_received != null && extra.redeem_received !== ''
+      ? num_(extra.redeem_received)
+      : num_(found.redemption_amount);
+    sh.getRange(found._row, col['redeem_received']).setValue(amt);
+    // บันทึกการรับสินไถ่เป็นงวดรับเงิน (เพื่อให้กำไรรับจริงถูกต้อง)
+    addPaymentRow_({ contract_id: id, date: extra.redeem_date || isoToday_(), amount: amt, type: 'ไถ่ถอน', note: 'ปิดสัญญา (รับสินไถ่)', slip_base64: extra.slip_base64, slip_name: extra.slip_name });
+  } else { // forfeited — ได้กรรมสิทธิ์ เงินได้ = เงินต้น
+    sh.getRange(found._row, col['income_amount']).setValue(num_(found.sale_amount));
+  }
+  sh.getRange(found._row, col['updated_at']).setValue(new Date());
+
+  return enrichOne_(id);
+}
+
+/* ================= PAYMENTS (ประวัติรับเงิน / ต่อสัญญา) ================= */
+
+function getPaySheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(PAY_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(PAY_SHEET);
+    sh.getRange(1, 1, 1, PAY_HEADERS.length).setValues([PAY_HEADERS]);
+    sh.getRange(1, 1, 1, PAY_HEADERS.length).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function readPaymentsMap_() {
+  const sh = getPaySheet_();
+  const last = sh.getLastRow();
+  const map = {};
+  if (last < 2) return map;
+  const vals = sh.getRange(2, 1, last - 1, PAY_HEADERS.length).getValues();
+  vals.forEach(function (row, i) {
+    const o = {}; PAY_HEADERS.forEach(function (h, c) { o[h] = row[c]; });
+    if (String(o.pid).trim() === '') return;
+    o._row = i + 2;
+    o.date = iso_(o.date);
+    o.amount = num_(o.amount);
+    const cid = String(o.contract_id);
+    if (!map[cid]) map[cid] = [];
+    map[cid].push(o);
   });
-});
-el('fab').addEventListener('click',()=>{ editId=null; selectedId=null; go('form'); });
+  // เรียงตามวันที่
+  Object.keys(map).forEach(function (k) {
+    map[k].sort(function (a, b) { return (a.date < b.date ? -1 : a.date > b.date ? 1 : 0); });
+  });
+  return map;
+}
 
-/* ---------- boot ---------- */
-async function boot(){
-  if(API_URL==='PASTE_YOUR_WEB_APP_URL_HERE'){
-    el('app').innerHTML = `<div class="setup">
-      <h3>⚙️ ยังไม่ได้ตั้งค่า</h3>
-      <p>เปิดไฟล์ <code>index.html</code> แล้วแก้บรรทัด:</p>
-      <p><code>const API_URL = '...'</code></p>
-      <p>ให้เป็น URL ของ Web App (ลงท้าย <code>/exec</code>) ที่ได้จากการ Deploy Apps Script</p>
-      <p style="margin-top:10px">ดูขั้นตอนใน <code>SETUP_GUIDE.md</code></p>
-    </div>`;
-    return;
+function paymentsFor_(id) { return readPaymentsMap_()[String(id)] || []; }
+
+/* คืนสัญญาเดียว (พร้อม payments) */
+function enrichOne_(id) {
+  const o = readAll_().find(function (x) { return String(x.id) === String(id); });
+  if (!o) return null;
+  return enrich_(o, paymentsFor_(id));
+}
+
+function addPaymentRow_(p) {
+  const sh = getPaySheet_();
+  const pid = 'P' + Date.now() + Math.floor(Math.random() * 1000);
+  let slipUrl = p.slip_url || '';
+  if (p.slip_base64) {
+    try { slipUrl = saveSlip_(p.slip_base64, p.slip_name, p.contract_id); }
+    catch (e) { slipUrl = ''; }
   }
-  el('app').innerHTML = `<div class="spin">กำลังโหลดข้อมูล…</div>`;
-  el('nav').classList.remove('hidden');
-  try{ CONTRACTS = await apiGet(); render(); }
-  catch(e){
-    el('app').innerHTML = `<div class="setup"><h3>เชื่อมต่อไม่สำเร็จ</h3>
-      <p>${esc(e.message)}</p>
-      <p>ตรวจสอบว่า Deploy เป็น Web App แบบ Access = Anyone และ URL ถูกต้อง</p>
-      <button class="btn dark sm" style="margin-top:10px" onclick="boot()">ลองใหม่</button></div>`;
+  const rec = {
+    pid: pid,
+    contract_id: p.contract_id,
+    date: p.date || isoToday_(),
+    amount: num_(p.amount),
+    type: p.type || 'ดอกเบี้ย',
+    term_months: p.term_months || '',
+    note: p.note || '',
+    created_at: new Date(),
+    slip_url: slipUrl
+  };
+  sh.appendRow(PAY_HEADERS.map(function (h) { return rec[h] === undefined ? '' : rec[h]; }));
+  return pid;
+}
+
+/* อัปโหลดสลิป (base64) ขึ้น Google Drive แล้วคืนลิงก์ดู */
+function saveSlip_(b64, filename, contractId) {
+  try {
+    const commaIdx = b64.indexOf(',');
+    const data = commaIdx >= 0 ? b64.substring(commaIdx + 1) : b64;
+    let mime = 'image/jpeg';
+    const m = b64.match(/^data:([^;]+);/); if (m) mime = m[1];
+    const name = (filename || ('slip_' + contractId + '_' + Date.now())).replace(/[^\w.\-ก-๙ ]/g, '');
+    const blob = Utilities.newBlob(Utilities.base64Decode(data), mime, name);
+    const file = getSlipFolder_().createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return 'https://drive.google.com/file/d/' + file.getId() + '/view';
+  } catch (e) {
+    return '';
   }
 }
-boot();
-</script>
-</body>
-</html>
+
+function getSlipFolder_() {
+  const name = 'สลิปขายฝาก';
+  const it = DriveApp.getFoldersByName(name);
+  return it.hasNext() ? it.next() : DriveApp.createFolder(name);
+}
+
+/* บันทึกรับเงินหลายรายการในครั้งเดียว (ดอกเบี้ย + ค่าปรับ + ค่าอื่นๆ) อัปสลิปครั้งเดียวใช้ร่วมกัน */
+function addPaymentMulti_(body) {
+  if (!body.contract_id) throw 'ไม่ระบุสัญญา';
+  let slipUrl = '';
+  if (body.slip_base64) {
+    try { slipUrl = saveSlip_(body.slip_base64, body.slip_name, body.contract_id); }
+    catch (e) { slipUrl = ''; }   // อัปสลิปไม่ได้ ก็ยังบันทึกเงินได้
+  }
+  const comps = body.components || [];
+  comps.forEach(function (c) {
+    if (num_(c.amount) > 0) {
+      addPaymentRow_({
+        contract_id: body.contract_id,
+        date: body.date,
+        amount: c.amount,
+        type: c.type || 'ดอกเบี้ย',
+        note: c.note || body.note || '',
+        slip_url: slipUrl
+      });
+    }
+  });
+  return enrichOne_(body.contract_id);
+}
+
+/* บันทึกรับเงินทั่วไป (ดอกเบี้ย/อื่นๆ) */
+function addPayment_(body) {
+  if (!body.contract_id) throw 'ไม่ระบุสัญญา';
+  addPaymentRow_({
+    contract_id: body.contract_id,
+    date: body.date,
+    amount: body.amount,
+    type: body.type || 'ดอกเบี้ย',
+    note: body.note || '',
+    slip_base64: body.slip_base64,
+    slip_name: body.slip_name
+  });
+  return enrichOne_(body.contract_id);
+}
+
+/* ต่อสัญญา: รับค่าต่อ + ขยายวันครบกำหนด */
+function renewContract_(body) {
+  if (!body.contract_id) throw 'ไม่ระบุสัญญา';
+  const sh = getSheet_();
+  const found = readAll_().find(function (o) { return String(o.id) === String(body.contract_id); });
+  if (!found) throw 'ไม่พบสัญญา';
+
+  // บันทึกเงินค่าต่อสัญญา
+  const months = num_(body.term_months) || 12;
+  addPaymentRow_({
+    contract_id: body.contract_id,
+    date: body.date,
+    amount: body.amount,
+    type: 'ต่อสัญญา',
+    term_months: months,
+    note: body.note || ('ต่อสัญญา ' + months + ' เดือน'),
+    slip_base64: body.slip_base64,
+    slip_name: body.slip_name
+  });
+
+  // ขยายกำหนดไถ่: ต่อจากวันครบกำหนดเดิม (ถ้าเลยมาแล้วให้ต่อจากวันที่ต่อสัญญา)
+  const col = {}; HEADERS.forEach(function (h, i) { col[h] = i + 1; });
+  const today = startOfDay_(new Date());
+  let base = toDate_(found.deadline);
+  if (!base || base < today) base = toDate_(body.date) || today;
+  const newDeadline = addMonths_(base, months);
+  const newGrace = addMonths_(newDeadline, GRACE_MONTHS);
+  sh.getRange(found._row, col['deadline']).setValue(iso_(newDeadline));
+  sh.getRange(found._row, col['grace_deadline']).setValue(iso_(newGrace));
+  // ต่อสัญญาแล้ว สถานะกลับมา active: ล้างสถานะปิด (เผื่อเคยถูกตั้ง)
+  if (found.redeem_status) sh.getRange(found._row, col['redeem_status']).setValue('');
+  sh.getRange(found._row, col['updated_at']).setValue(new Date());
+
+  return enrichOne_(body.contract_id);
+}
+
+function deletePayment_(pid, contractId) {
+  const sh = getPaySheet_();
+  const last = sh.getLastRow();
+  if (last >= 2) {
+    const ids = sh.getRange(2, 1, last - 1, 1).getValues();
+    for (let i = 0; i < ids.length; i++) {
+      if (String(ids[i][0]) === String(pid)) { sh.deleteRow(i + 2); break; }
+    }
+  }
+  return enrichOne_(contractId);
+}
+
+function isoToday_() { return iso_(new Date()); }
+
+/* สร้างตารางงวดดอกเบี้ย + เช็คว่างวดไหนจ่าย/ค้าง
+ * - โหมดคงที่: ค่างวด = ดอกเบี้ย/เดือน (บาท) คงที่
+ * - โหมดลดต้นลดดอก (monthly_rate > 0): ค่างวด = เงินต้นคงเหลือ × อัตรา%/เดือน
+ *   การ "ปิดต้น" ลดเงินต้นคงเหลือ → ดอกงวดถัดไปลดลง
+ * - เงินดอกเบี้ย/ต่อสัญญาที่รับ นำมาตัดงวดเรียงตามวันที่ (FIFO)
+ */
+function computeSchedule_(o, payments, sale, pct, status) {
+  const empty = { schedule: [], paidCount: 0, overdueCount: 0, overdueAmount: 0, upcomingCount: 0, per: 0, totalCount: 0 };
+  if (status === 'redeemed' || status === 'forfeited') return empty;
+  const cd = toDate_(o.contract_date);
+  const term = num_(o.term_months) || 12;
+  if (!cd || term <= 0 || sale <= 0) return empty;
+
+  const deadline = toDate_(o.deadline);
+  let n = term;
+  if (deadline) { const span = monthsBetween_(cd, deadline); if (span > n) n = span; }
+  if (n <= 0) n = term;
+  if (n > 240) n = 240;
+
+  const rate = num_(o.monthly_rate);
+  const reducing = rate > 0;
+  const flatPer = num_(o.monthly_interest) > 0 ? num_(o.monthly_interest) : Math.round(sale * pct / 100 / term);
+
+  // การเปลี่ยนแปลงเงินต้น: ปิดต้น = ลด, เพิ่มต้น = เพิ่ม
+  const princDelta = (payments || []).filter(function (p) { return p.type === 'ปิดต้น' || p.type === 'เพิ่มต้น'; })
+    .map(function (p) { return { date: iso_(p.date), delta: (p.type === 'เพิ่มต้น' ? 1 : -1) * num_(p.amount) }; });
+  function outstandingBefore(dISO) {
+    let bal = sale;
+    princDelta.forEach(function (p) { if (p.date && p.date < dISO) bal += p.delta; });
+    return Math.max(0, bal);
+  }
+
+  // เงินดอกเบี้ย/ต่อสัญญา ที่นำมาตัดงวด
+  const pool = (payments || []).filter(function (p) { return p.type === 'ดอกเบี้ย' || p.type === 'ต่อสัญญา'; })
+    .map(function (p) { return { date: iso_(p.date), amount: num_(p.amount) }; })
+    .sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+
+  const today = startOfDay_(new Date());
+  let idx = 0, acc = 0, lastDate = null;
+  const sched = [];
+  let paidCount = 0, overdueCount = 0, overdueAmount = 0, upcomingCount = 0;
+
+  for (let k = 1; k <= n; k++) {
+    const due = addMonths_(cd, k);
+    const dueISO = iso_(due);
+    const outst = outstandingBefore(dueISO);
+    if (outst <= 0) break;                       // เงินต้นหมดแล้ว ไม่มีดอกอีก
+    const per = reducing ? Math.round(outst * rate / 100) : flatPer;
+    if (per <= 0) break;
+    while (acc < per && idx < pool.length) { acc += pool[idx].amount; lastDate = pool[idx].date; idx++; }
+    let st, paidDate = null;
+    if (acc >= per) { st = 'paid'; paidDate = lastDate; acc -= per; paidCount++; }
+    else if (due < today) { st = 'overdue'; overdueCount++; overdueAmount += per; }
+    else { st = 'upcoming'; upcomingCount++; }
+    sched.push({ n: k, due: dueISO, amount: per, status: st, paidDate: paidDate });
+  }
+  const firstUnpaid = sched.filter(function (s) { return s.status !== 'paid'; })[0];
+  const per = firstUnpaid ? firstUnpaid.amount
+    : (reducing ? Math.round(outstandingBefore(iso_(today)) * rate / 100) : flatPer);
+  return { schedule: sched, paidCount: paidCount, overdueCount: overdueCount, overdueAmount: overdueAmount, upcomingCount: upcomingCount, per: per, totalCount: sched.length };
+}
+
+function monthsBetween_(a, b) {
+  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+}
+
+/* ================= HELPERS ================= */
+
+function computeDates_(contractDate, termMonths, deadlineIn, graceIn) {
+  let deadline = toDate_(deadlineIn);
+  const cd = toDate_(contractDate);
+  const m = num_(termMonths);
+  if (!deadline && cd && m) deadline = addMonths_(cd, m);
+  let grace = toDate_(graceIn);
+  if (!grace && deadline) grace = addMonths_(deadline, GRACE_MONTHS);
+  return { deadline: deadline ? iso_(deadline) : '', grace: grace ? iso_(grace) : '' };
+}
+
+function addMonths_(d, n) {
+  const r = new Date(d.getTime());
+  r.setMonth(r.getMonth() + n);
+  return r;
+}
+function startOfDay_(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function num_(v) { if (v === '' || v == null) return 0; const n = Number(String(v).replace(/,/g, '')); return isNaN(n) ? 0 : n; }
+function countDeeds_(s) {
+  if (!s) return 0;
+  return String(s).split(/[,;\n]/).map(function (x) { return x.trim(); }).filter(Boolean).length;
+}
+function toDate_(v) {
+  if (!v) return null;
+  if (v instanceof Date) return startOfDay_(v);
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+  const d = new Date(s);
+  return isNaN(d) ? null : startOfDay_(d);
+}
+function iso_(v) {
+  const d = toDate_(v);
+  if (!d) return '';
+  const mm = ('0' + (d.getMonth() + 1)).slice(-2);
+  const dd = ('0' + d.getDate()).slice(-2);
+  return d.getFullYear() + '-' + mm + '-' + dd;
+}
+function json_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/* ================= SEED (ข้อมูลจริงจาก Excel เดิม — ปรับให้ถูกต้องแล้ว) =================
+ * หมายเหตุ: สินไถ่คำนวณใหม่ = เงินต้น x 1.15 (แก้ค่าที่ค้างในไฟล์เดิม)
+ * วันที่บางรายการในไฟล์เดิมผิดรูปแบบ ผมปรับให้สมเหตุสมผลแล้ว — โปรดตรวจสอบอีกครั้ง
+ */
+function seedSampleData() {
+  const sh = getSheet_();
+  const existing = {};
+  readAll_().forEach(function (o) {
+    existing[(o.seller_name || '') + '|' + num_(o.sale_amount) + '|' + iso_(o.contract_date)] = true;
+  });
+  const rows = [
+    // ----- พอร์ต Toppy -----
+    { owner:'Toppy', nitikam:'ขายฝาก', deed_type:'น.ส.3 ก.', deed_no:'5429', location:'เขาตูม ปัตตานี',
+      contract_date:'2016-05-17', term_months:12, seller_name:'นางกามารีย๊ะ สะแต', seller_id:'',
+      sale_amount:1000000, hold_years:9, interest_pct:15, redeem_status:'forfeited', redeem_date:'2017-05-18', income_year:'2560', income_amount:1000000, note:'ไม่ไถ่ถอน ได้กรรมสิทธิ์เด็ดขาด' },
+
+    { owner:'Toppy', nitikam:'ขายฝาก', deed_type:'น.ส.4 จ.', deed_no:'56333', location:'ยะรัง ปัตตานี',
+      contract_date:'2024-09-13', term_months:12, seller_name:'นายอัดนัน มะแอ', seller_id:'1959900271441',
+      sale_amount:1000000, appraised:1400635, interest_pct:15, redeem_status:'redeemed', redeem_date:'2026-03-16', redeem_received:1034500, income_year:'2568', income_amount:1034500 },
+
+    { owner:'Toppy', nitikam:'ขายฝาก', deed_type:'น.ส.4 จ.', deed_no:'123820, 123821, 123822', location:'ยะลา ยะลา',
+      contract_date:'2025-08-27', term_months:12, seller_name:'นายกูเปาซัน สุริยะสุนทร', seller_id:'1960500036616',
+      sale_amount:7000000, appraised:448590, interest_pct:15, note:'3 แปลง' },
+
+    { owner:'Toppy', nitikam:'ขายฝาก', deed_type:'น.ส.4 จ.', deed_no:'26476, 120806, 120807, 120808, 120809, 120810, 120811, 120812, 120813', location:'ยะลา ยะลา',
+      contract_date:'2024-08-13', term_months:12, seller_name:'นางเสาวนีย์ รัตน์กรณ์', seller_id:'3320501214803',
+      sale_amount:5000000, interest_pct:15, note:'9 แปลง — เลยสิทธิไถ่ ต้องรับกรรมสิทธิ์' },
+
+    // ----- พอร์ต Daddy -----
+    { owner:'Daddy', nitikam:'ขายฝาก', deed_type:'น.ส.4 จ.', deed_no:'', location:'ยะลา ยะลา',
+      contract_date:'2025-09-01', term_months:12, seller_name:'น.ส.นูรอาดีลา ดือราโอะ', seller_id:'5940400018767',
+      sale_amount:4500000, interest_pct:15 },
+
+    { owner:'Daddy', nitikam:'ขายฝาก', deed_type:'น.ส.4 ง.', deed_no:'21730', location:'ยะลา ยะลา',
+      contract_date:'2025-08-07', term_months:12, seller_name:'นางรอฮานี ยูหนุ๊', seller_id:'3959900075281',
+      sale_amount:2700000, interest_pct:15 },
+
+    { owner:'Daddy', nitikam:'ขายฝาก', deed_type:'น.ส.4 จ.', deed_no:'118886', location:'ยะลา ยะลา',
+      contract_date:'2023-07-11', term_months:12, seller_name:'นายชีวิน เชาว์พัฒน์พูนผล', seller_id:'3959900551962',
+      sale_amount:1500000, interest_pct:15, note:'เลยสิทธิไถ่' },
+
+    { owner:'Daddy', nitikam:'ขายฝาก', deed_type:'น.ส.4 จ.', deed_no:'118888', location:'ยะลา ยะลา',
+      contract_date:'2023-11-03', term_months:12, seller_name:'นายชีวิน เชาว์พัฒน์พูนผล', seller_id:'3959900551962',
+      sale_amount:3450000, interest_pct:15, note:'เลยสิทธิไถ่' },
+
+    // ----- ขายซื้อคืน: Toppy (5 ราย) — สถานะ "ได้กรรมสิทธิ์" ตามเครื่องหมาย √ ในไฟล์เดิม โปรดตรวจสอบ -----
+    { owner:'Toppy', nitikam:'ขายซื้อคืน', deed_type:'น.ส.4 จ.', deed_no:'10558', location:'ลาดบัวหลวง อยุธยา',
+      contract_date:'2025-07-08', term_months:3, deadline:'2026-07-08', seller_name:'นายประสาร เลิศพงศ์พิรุฬห์', seller_id:'3101702416112',
+      sale_amount:2500000, appraised:567390, interest_pct:28, redeem_status:'forfeited', redeem_date:'2026-07-08', income_year:'2569', income_amount:2500000, note:'ขายซื้อคืน — ตรวจสอบสถานะ/วันที่' },
+
+    { owner:'Toppy', nitikam:'ขายซื้อคืน', deed_type:'น.ส.3 ก.', deed_no:'2379', location:'รามัน ยะลา',
+      contract_date:'2024-11-06', term_months:3, deadline:'2025-11-06', seller_name:'นายภูพาน โตเอื่อม', seller_id:'3959900091031',
+      sale_amount:2400000, interest_pct:25, redeem_status:'forfeited', redeem_date:'2025-11-06', income_year:'2568', income_amount:2400000, note:'ขายซื้อคืน — ตรวจสอบสถานะ' },
+
+    { owner:'Toppy', nitikam:'ขายซื้อคืน', deed_type:'น.ส.4 ง.', deed_no:'14978, 18337', location:'ยะลา ยะลา',
+      contract_date:'2025-01-14', term_months:24, deadline:'2026-01-14', seller_name:'นายทวี เรืองยังมี', seller_id:'3959900496287',
+      sale_amount:7000000, appraised:5992200, interest_pct:14.2857142857, redeem_status:'forfeited', redeem_date:'2026-01-14', income_year:'2569', income_amount:7000000, note:'ขายซื้อคืน 2 แปลง — ตรวจสอบสถานะ/ระยะเวลา' },
+
+    { owner:'Toppy', nitikam:'ขายซื้อคืน', deed_type:'น.ส.4 จ.', deed_no:'58164', location:'โคกโพธิ์ ปัตตานี',
+      contract_date:'2024-08-14', term_months:12, deadline:'2025-08-14', seller_name:'นายวิชาญ ไชยชนะ', seller_id:'3940200486655',
+      sale_amount:2000000, appraised:2488335, interest_pct:0, redeem_status:'forfeited', redeem_date:'2025-08-14', income_year:'2568', income_amount:2000000, note:'ขายซื้อคืน (สินไถ่=เงินต้น) — ตรวจสอบ' },
+
+    { owner:'Toppy', nitikam:'ขายซื้อคืน', deed_type:'น.ส.4 จ.', deed_no:'56333', location:'ยะรัง ปัตตานี',
+      contract_date:'2024-11-18', term_months:12, deadline:'2025-11-18', seller_name:'นายอัดนัน มะแอ', seller_id:'1959900271441',
+      sale_amount:2000000, appraised:1400635, interest_pct:15, redeem_status:'forfeited', redeem_date:'2025-11-18', income_year:'2568', income_amount:2000000, note:'ขายซื้อคืน (คนละสัญญากับขายฝาก) — ตรวจสอบ' },
+
+    // ----- ขายซื้อคืน: Daddy (1 ราย) -----
+    { owner:'Daddy', nitikam:'ขายซื้อคืน', deed_type:'น.ส.4 จ.', deed_no:'53789', location:'ยะลา ยะลา',
+      contract_date:'2023-07-20', term_months:12, deadline:'2024-07-20', seller_name:'น.ส.นูรฟาดีลา เฮ็งปิยา', seller_id:'3941000414431',
+      sale_amount:1200000, interest_pct:24, redeem_status:'forfeited', redeem_date:'2024-07-20', income_year:'2567', income_amount:1200000, note:'ขายซื้อคืน (ไม่ไถ่ถอน) — ตรวจสอบ' }
+  ];
+
+  var added = 0;
+  rows.forEach(function (r) {
+    var key = (r.seller_name || '') + '|' + num_(r.sale_amount) + '|' + iso_(r.contract_date);
+    if (existing[key]) return;
+    var saved = saveContract_(r);
+    if (r.redeem_status === 'redeemed' && saved && saved.id) {
+      addPaymentRow_({ contract_id: saved.id, date: r.redeem_date, amount: (r.redeem_received || saved.redemption_amount), type: 'ไถ่ถอน', note: 'ปิดสัญญา (รับสินไถ่)' });
+    }
+    added++;
+  });
+  SpreadsheetApp.getActive().toast('นำเข้าข้อมูล ' + added + ' รายการ (ข้ามที่มีอยู่แล้ว)', 'ขายฝาก', 5);
+}
