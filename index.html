@@ -326,12 +326,18 @@ function go(v,id){ view=v; if(id!==undefined) selectedId=id; window.scrollTo(0,0
 function renderDashboard(){
   const list = ownedContracts();
   const open = list.filter(c=>c.status!=='redeemed'&&c.status!=='forfeited');
-  const principal = open.reduce((s,c)=>s+(+c.sale_amount||0),0);
+  // เงินต้นคงเหลือจริง (หักปิดต้น / บวกเพิ่มต้นแล้ว)
+  const principal = open.reduce((s,c)=>s+(c.outstanding!=null?(+c.outstanding||0):(+c.sale_amount||0)),0);
+  const disbursed = open.reduce((s,c)=>s+(+c.principal_disbursed||+c.sale_amount||0),0);
+  const paidDown = open.reduce((s,c)=>s+(+c.principal_paid||0),0);
   const realized = list.reduce((s,c)=>s+(+c.realized_profit||0),0);
 
   const ym = new Date().toISOString().slice(0,7);
   let monthIn = 0;
-  list.forEach(c=>(c.payments||[]).forEach(p=>{ if(String(p.date).slice(0,7)===ym) monthIn += (+p.amount||0); }));
+  list.forEach(c=>(c.payments||[]).forEach(p=>{
+    if(p.type==='เพิ่มต้น') return;              // เงินจ่ายออก ไม่นับเป็นรับ
+    if(String(p.date).slice(0,7)===ym) monthIn += (+p.amount||0);
+  }));
 
   const overdue = list.filter(c=>c.status==='overdue');
   const review = list.filter(c=>c.needsReview);
@@ -371,9 +377,9 @@ function renderDashboard(){
     </div>
     <div class="sec">
       <div class="big">
-        <div class="k">เงินต้นที่ปล่อยอยู่</div>
+        <div class="k">เงินต้นคงเหลือ (ที่ปล่อยอยู่)</div>
         <div class="v">${baht(principal)}</div>
-        <div class="s">${open.length} สัญญากำลังดำเนิน</div>
+        <div class="s">${open.length} สัญญากำลังดำเนิน${paidDown>0?(' · ปิดต้นแล้ว '+baht(paidDown)+' จาก '+baht(disbursed)):''}</div>
       </div>
       <div class="grid2">
         <div class="stat"><div class="k">กำไรรับจริง (สะสม)</div><div class="v" style="color:var(--oktx)">${baht(realized)}</div></div>
@@ -421,7 +427,7 @@ function cardHTML(c){
       <div class="nm">${esc(c.seller_name||'(ไม่ระบุชื่อ)')}</div>
       <span class="badge ${st.cls}">${st.label}</span>
     </div>
-    <div class="ln">${esc(c.location)} · เงินต้น ${baht(c.sale_amount)}${deeds} · ${esc(c.owner)}</div>
+    <div class="ln">${esc(c.location)} · ${(c.principal_paid>0||c.principal_added>0)?('คงเหลือ '+baht(c.outstanding)):('เงินต้น '+baht(c.sale_amount))}${deeds} · ${esc(c.owner)}</div>
     ${ln2}
   </div>`;
 }
