@@ -262,7 +262,11 @@ async function apiGet(){
   const text = await res.text();
   let data;
   try{ data = JSON.parse(text); }
-  catch(err){ throw new Error('เซิร์ฟเวอร์ตอบกลับผิดรูปแบบ — ตรวจว่า Deploy เป็น Web app (Anyone) และได้ Deploy เวอร์ชันใหม่แล้ว'); }
+  catch(err){
+    if(/accounts\.google\.com|Sign in|การอนุญาต|Authorization|authoriz/i.test(text))
+      throw new Error('สคริปต์ต้องขออนุญาตใหม่ (เพราะมีการใช้ Google Drive เก็บสลิป)\n\nวิธีแก้: เปิด Apps Script → เลือกฟังก์ชัน setup → กด Run → กด Allow ให้ครบ → แล้ว Deploy → Manage deployments → ✏️ → New version → Deploy');
+    throw new Error('เซิร์ฟเวอร์ตอบกลับผิดรูปแบบ — ตรวจว่า Deploy เป็น Web app (Anyone) และได้ Deploy เวอร์ชันใหม่แล้ว');
+  }
   if(!data.ok) throw new Error(data.error||'load failed');
   return data.contracts;
 }
@@ -282,6 +286,17 @@ async function apiPost(payload){
 async function reload(){
   CONTRACTS = await apiGet();
   render();
+}
+/* นำสัญญาที่เซิร์ฟเวอร์ส่งกลับมาอัปเดตในเครื่องเลย — ไม่ต้องโหลดทั้งพอร์ตใหม่ */
+function patchContract(c){
+  if(!c || !c.id) return false;
+  const i = CONTRACTS.findIndex(x=>String(x.id)===String(c.id));
+  if(i>=0) CONTRACTS[i]=c; else CONTRACTS.push(c);
+  return true;
+}
+async function applyResult(r, id){
+  if(r && patchContract(r.contract)) return;
+  await reload();                 // เผื่อเซิร์ฟเวอร์ไม่ได้ส่งสัญญากลับมา
 }
 
 /* ---------- filtering ---------- */
@@ -700,31 +715,33 @@ async function savePay(){
   if(slipData){ payload.slip_base64=slipData; payload.slip_name='slip_'+id+'_'+date+'.jpg'; }
   try{
     showToast('กำลังบันทึก…');
-    await apiPost(payload);
-    closePay(); await reload(); go('detail',id); showToast('บันทึกแล้ว');
+    const r = await apiPost(payload);
+    closePay(); await applyResult(r,id); go('detail',id); showToast('บันทึกแล้ว');
   }catch(e){ alert('ผิดพลาด: '+e.message); }
 }
 async function delPayment(pid,id){
   if(!confirm('ลบรายการรับเงินนี้?')) return;
-  try{ showToast('กำลังลบ…'); await apiPost({action:'deletePayment',pid,contract_id:id}); await reload(); go('detail',id); showToast('ลบแล้ว'); }
+  try{ showToast('กำลังลบ…'); const r=await apiPost({action:'deletePayment',pid,contract_id:id}); await applyResult(r,id); go('detail',id); showToast('ลบแล้ว'); }
   catch(e){ alert('ผิดพลาด: '+e.message); }
 }
 async function doForfeit(id){
   if(!confirm('ยืนยัน: ทำเครื่องหมายว่าที่ดินหลุดขายฝาก (ได้กรรมสิทธิ์เด็ดขาด)?\n(จะบันทึกเงินได้ = เงินต้น)')) return;
   const dateStr = prompt('วันที่ได้กรรมสิทธิ์ (ปี-เดือน-วัน)', new Date().toISOString().slice(0,10));
   if(dateStr===null) return;
-  try{ showToast('กำลังบันทึก…'); await apiPost({action:'forfeit',id,redeem_date:dateStr}); await reload(); go('detail',id); showToast('บันทึกได้กรรมสิทธิ์แล้ว'); }
+  try{ showToast('กำลังบันทึก…'); const r=await apiPost({action:'forfeit',id,redeem_date:dateStr}); await applyResult(r,id); go('detail',id); showToast('บันทึกได้กรรมสิทธิ์แล้ว'); }
   catch(e){ alert('ผิดพลาด: '+e.message); }
 }
 async function doStatus(id, value){
   const msg = value==='overdue' ? 'ทำเครื่องหมายว่าสัญญานี้ค้างชำระ / ขาด?' : 'คืนสถานะเป็นปกติ (เปิดสัญญาอีกครั้ง)?';
   if(!confirm(msg)) return;
-  try{ showToast('กำลังบันทึก…'); await apiPost({action:'setStatus',id,value}); await reload(); go('detail',id); showToast('อัปเดตสถานะแล้ว'); }
+  try{ showToast('กำลังบันทึก…'); const r=await apiPost({action:'setStatus',id,value}); await applyResult(r,id); go('detail',id); showToast('อัปเดตสถานะแล้ว'); }
   catch(e){ alert('ผิดพลาด: '+e.message); }
 }
 async function doDelete(id){
   if(!confirm('ลบสัญญานี้ถาวร?')) return;
-  try{ showToast('กำลังลบ…'); await apiPost({action:'delete',id}); await reload(); go('list'); showToast('ลบแล้ว'); }
+  try{ showToast('กำลังลบ…'); await apiPost({action:'delete',id});
+    CONTRACTS = CONTRACTS.filter(x=>String(x.id)!==String(id));
+    selectedId=null; go('list'); showToast('ลบแล้ว'); }
   catch(e){ alert('ผิดพลาด: '+e.message); }
 }
 
@@ -893,8 +910,8 @@ async function saveForm(){
   try{
     showToast('กำลังบันทึก…');
     const r = await apiPost({action:'save',contract:c});
-    editId=null; await reload();
-    go('detail', r.contract.id);
+    editId=null; await applyResult(r, c.id);
+    go('detail', (r.contract&&r.contract.id)||c.id);
     showToast('บันทึกแล้ว');
   }catch(e){ alert('ผิดพลาด: '+e.message); }
 }
